@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@layer components {
+  .form-input { @apply w-full rounded-md border border-current/25 bg-background px-3 py-2 text-foreground; }
+  .form-button { @apply rounded-md bg-foreground px-4 py-2 text-background disabled:cursor-wait disabled:opacity-50; }
+}
+
+:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
