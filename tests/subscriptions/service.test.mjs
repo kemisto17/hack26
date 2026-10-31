@@ -47,6 +47,24 @@ test('session mismatch/inactive-session rejection dispatch no writes', async () 
   await rejects(() => disabled.service.createSubscription(staff, input), 'FORBIDDEN');
   assert.equal(calls.length + disabled.calls.length, 0);
 });
+test('unknown verified role fails closed before reads or writes', async () => {
+  const { service, calls } = fixture({ id, role: 'unexpected' });
+  await rejects(() => service.listSubscriptions(owner), 'FORBIDDEN');
+  await rejects(() => service.pauseSubscription(owner, other, { expected_version: '2' }), 'FORBIDDEN');
+  assert.equal(calls.length, 0);
+});
+test('a read binding returning the wrong subscription cannot expose it or dispatch an action', async () => {
+  const { service, calls } = fixture(owner, { readSubscription: async () => ({ ...row, id }) });
+  await rejects(() => service.getSubscription(owner, other), 'NOT_FOUND');
+  await rejects(() => service.pauseSubscription(owner, other, { expected_version: '2' }), 'NOT_FOUND');
+  assert.equal(calls.length, 0);
+});
+test('owner action policy exposes only the three plan flags', async () => {
+  const { service } = fixture(owner, { readPlanPolicy: async () => ({ allow_pause: true, allow_close: false, allow_renew: true, internal_notes: 'secret' }) });
+  const result = await service.getOwnerActions(owner, other);
+  assert.deepEqual(result.plan, { allow_pause: true, allow_close: false, allow_renew: true });
+  await rejects(() => fixture(owner, { readSubscription: async () => ({ ...row, customer_id: other }) }).service.getOwnerActions(owner, other), 'NOT_FOUND');
+});
 test('customer reads expose only safe allowlisted fields and preserve accepted prices', async () => {
   const { service } = fixture(owner);
   const result = await service.getSubscription(owner, other);
