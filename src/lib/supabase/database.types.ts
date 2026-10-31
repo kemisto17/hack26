@@ -861,7 +861,44 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      identity_finish_invitation: {
+        Args: {
+          p_actor_id: string
+          p_claim_token: string
+          p_invitation_id: string
+        }
+        Returns: Json
+      }
+      identity_prepare_invitation: {
+        Args: { p_actor_id: string; p_display_name: string; p_email: string }
+        Returns: Json
+      }
+      identity_release_invitation: {
+        Args: {
+          p_actor_id: string
+          p_claim_token: string
+          p_invitation_id: string
+        }
+        Returns: undefined
+      }
+      identity_set_access: {
+        Args: {
+          p_actor_id: string
+          p_expected_version: number
+          p_is_active?: boolean
+          p_role?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      identity_update_profile: {
+        Args: {
+          p_actor_id: string
+          p_display_name: string
+          p_expected_version: number
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
