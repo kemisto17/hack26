@@ -1,0 +1,3 @@
+import Link from "next/link";
+import { Brand } from "@/components/customer-web/public-shell";
+export default function NotFound() { return <main className="empty-state" style={{ minHeight: "70vh", justifyContent: "center" }}><Brand /><p className="eyebrow" style={{ marginTop: 35 }}>404 · Not found</p><h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-1px" }}>This page is out of the loop.</h1><p style={{ marginTop: 15 }}>The page or record may not be available for your account. Let’s get you somewhere useful.</p><div style={{ display: "flex", gap: 12, marginTop: 25 }}><Link href="/" className="button button-primary">Back to Brightloop</Link><Link href="/portal/dashboard" className="button button-secondary">Your workspace</Link></div></main>; }
