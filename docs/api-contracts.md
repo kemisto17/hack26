@@ -118,6 +118,10 @@ D1's server Auth admin client, and is D4's sole source for customer_snapshot.
 Last-admin protection and invitation compensation/retry are D1 implementation
 gates; baseline SQL does not implement role-management workflows.
 
+D1's admin shell additionally calls server-only `listAccessUsers(actor,query)`
+for a paginated UserDTO directory under the admin's session/RLS. It requires a
+current active admin and exposes no Auth emails or additional HTTP endpoint.
+
 ## Catalog and pricing (D2)
 
 Admin writes all configuration. Internal staff reads it. Customers use only GET
@@ -261,6 +265,12 @@ Server exports: `listInvoices(actor,query)`, `getInvoice(actor,id)`,
 respective DTO; render returns escaped HTML string. D1 owns verification of
 `jobActor` using a distinct `BILLING_JOB_SECRET`, constant-time comparison, and
 redacted logs. No browser may invoke a server service as a job actor.
+
+Shared `JobActor = {readonly kind:'billing_job'}` lives with the D1 API types.
+`requireJobActor(request)` from `src/lib/api/job-auth.ts` checks an Authorization
+Bearer token against a distinct server-only secret (at least 32 characters)
+using constant-time digest comparison, rejects Origin/Cookie headers and logs
+only request ID/action/outcome. D4 must call it, never parse a job actor from JSON.
 
 ## Transactional integration contracts (future additive migrations)
 

@@ -4,6 +4,7 @@ export type Version = string;
 export type Role = 'admin' | 'internal' | 'customer';
 /** Derived on the server; never deserialize an Actor from request input. */
 export type Actor = { id: UUID; role: Role };
+export type JobActor = { readonly kind: 'billing_job' };
 export type PageQuery = { limit?: number; cursor?: string };
 export type Page<T> = { items: T[]; next_cursor: string | null };
 export type Mutation = { expected_version: Version };

@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:types": "node scripts/generate-db-types.mjs",
     "db:test": "supabase db query --local --file supabase/tests/initial-schema.sql",
+    "db:test:identity": "supabase db query --local --file supabase/tests/identity.sql",
     "db:lint": "supabase db lint --local",
     "db:advisors": "supabase db advisors --local"
   },
