@@ -28,7 +28,7 @@ The CLI is pinned to 2.122.0. Local database checks require Docker: `npx supabas
 
 ## Designated development database
 
-The human authorized a new `hack26-dev` project in `kemisto`, Mumbai: `uoxyukraftquykqdeoty`. No other project is a migration target. Both baseline migrations were applied via CLI 2.122.0 after an empty-table/history inspection and dry run. Real Supabase schema/access assertions, database lint (public/private) and security advisors pass. Hosted Auth settings were pushed from `supabase/config.toml` after reviewing the configuration diff. Keys are saved only in ignored local configuration.
+The human authorized a new `hack26-dev` project in `kemisto`, Mumbai: `uoxyukraftquykqdeoty`. No other project is a migration target. Both baseline migrations were applied via CLI 2.122.0 after an empty-table/history inspection and dry run. Real Supabase schema/access assertions and database lint (public/private) pass. Hosted Auth settings were pushed from `supabase/config.toml` after reviewing the configuration diff. Keys are saved only in ignored local configuration. Current advisor findings are recorded below.
 
 Performance advisors flag the baseline's separate staff/customer SELECT policies and unused indexes on this empty development database; these are not security failures. They also flag the invoice composite FK; its subscription-leading unique period index already supports parent lookups. Evaluate measured plans with D4 before adding a redundant wider index. Production mail, production callback URLs and production performance checks remain deployment requirements.
 
@@ -48,6 +48,11 @@ It needs CLI login for out-of-band fixture roles/cleanup. It refuses to run unle
 the explicit test project ref matches both the development ref and API URL.
 Run SQL suites and live tests sequentially: last-admin assertions intentionally
 depend on an isolated set of admin fixtures. Do not run this suite on production.
+The 11 live checks cover Auth tokens, safe profiles, RLS, Origin/version gates,
+role navigation, disabled sessions, invitation recovery and concurrent demotions.
+Fixture access changes use the protected HTTP API; CLI SQL only bootstraps roles
+and removes the run's fixtures. The normal suite also passes 10 Vitest checks
+and D3's 87 existing checks.
 
 For this designated hosted development project:
 
@@ -62,6 +67,11 @@ advisors may report an informational notice that private.staff_invitations has
 RLS but no policy: this is intentional, denying ordinary JWT roles all ledger
 access. It is unexposed and only service-role invoker RPCs/owned Auth triggers
 write it. Do not add a public policy to silence the notice.
+
+The final security advisor also warns that leaked-password screening is disabled
+on this development project. The documented length/character policy is enforced
+and tested; review [Supabase's breached-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)
+for the production plan. No paid plan change was made.
 
 ### Mail and first admin (remaining operator setup)
 
@@ -85,3 +95,8 @@ person signs up and confirms email. Verify their Auth ID and email-confirmed
 state, then promote that exact public.users ID through the development operator
 connection. Never use an email-name rule, public promotion route or seed password.
 Disposable test admins are removed; no permanent first admin was selected here.
+
+D3's merged handoff describes transaction requirements but supplies no executable
+migration proposals. Subscription SQL integration still depends on D2-reviewed
+pricing and D4's shared billing cutoff behavior. No D3/D4 workflow was implemented
+by this D1 slice, and their source/tests match main unchanged.

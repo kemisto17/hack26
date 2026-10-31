@@ -58,6 +58,11 @@ async function request(path: string, current?: Session, init: RequestInit = {}) 
   return response;
 }
 const patch = (body: unknown, version = '1', requestOrigin: string | null = origin): RequestInit => ({ method: 'PATCH', headers: { 'Content-Type': 'application/json', 'If-Match': `"${version}"`, ...(requestOrigin ? { Origin: requestOrigin } : {}) }, body: JSON.stringify(body) });
+async function changeAccess(actor: Session, id: string, changes: { role?: string; is_active?: boolean }) {
+  const profile = await admin.from('users').select('version').eq('id', id).single();
+  if (profile.error) throw profile.error;
+  expect((await request(`/api/v1/users/${id}/access`, actor, patch(changes, String(profile.data.version)))).status).toBe(200);
+}
 let customerA: Awaited<ReturnType<typeof fixture>>;
 let customerB: Awaited<ReturnType<typeof fixture>>;
 let adminA: Awaited<ReturnType<typeof fixture>>;
@@ -128,34 +133,46 @@ describe('real Auth, HTTP and Data API', () => {
     expect((await request('/api/v1/me', a, patch({ display_name: 'Stale' }))).status).toBe(409);
     expect((await (await request('/api/v1/me', a)).json()).data.display_name).toBe('Customer renamed');
   });
-  it('enforces staff directory and invitation/access permissions using current profiles', async () => {
+  it('paginates the staff-only customer directory', async () => {
     expect((await request('/api/v1/customers', a)).status).toBe(403);
     const first = await (await request('/api/v1/customers?limit=1', internal)).json();
     expect(first.data).toHaveLength(1); expect(first.data[0].role).toBe('customer'); expect(first.page.next_cursor).toEqual(expect.any(String));
     const second = await (await request(`/api/v1/customers?limit=1&cursor=${first.page.next_cursor}`, internal)).json();
     expect(second.data[0].id).not.toBe(first.data[0].id);
     expect((await request('/api/v1/customers?cursor=bad', internal)).status).toBe(400);
+  });
+  it('denies customer and internal staff invitations and access changes', async () => {
     for (const current of [a, internal]) {
       expect((await request('/api/v1/staff/invitations', current, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `never-sent-${run}@example.com`, display_name: 'Denied' }) })).status).toBe(403);
       expect((await request(`/api/v1/users/${customerB.id}/access`, current, patch({ role: 'admin' }))).status).toBe(403);
     }
+  });
+  it('reads billing contact only for the verified current staff actor', async () => {
     context.jar = internal.jar;
     expect(await getBillingContact({ id: staff.id, role: 'internal' }, customerB.id)).toEqual({ display_name: 'customer-b', email: customerB.email });
     await expect(getBillingContact({ id: customerA.id, role: 'admin' }, customerB.id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
-    sql(`update public.users set is_active=false where id='${staff.id}';`);
-    expect((await request('/api/v1/me', internal)).status).toBe(403);
-    expect((await request('/api/v1/customers', internal)).status).toBe(403);
-    sql(`update public.users set is_active=true where id='${staff.id}';`);
+  });
+  it('denies existing sessions immediately when a profile is disabled', async () => {
+    await changeAccess(aa, staff.id, { is_active: false });
+    try {
+      expect((await request('/api/v1/me', internal)).status).toBe(403);
+      expect((await request('/api/v1/customers', internal)).status).toBe(403);
+    } finally { await changeAccess(aa, staff.id, { is_active: true }); }
   });
   it('serializes concurrent admin demotions and rejects outdated access versions', async () => {
     const results = await Promise.all([
       request(`/api/v1/users/${adminA.id}/access`, aa, patch({ role: 'customer' }, '2')),
       request(`/api/v1/users/${adminB.id}/access`, bb, patch({ role: 'customer' }, '2')),
     ]);
-    expect(results.map(result => result.status).sort()).toEqual([200, 409]);
-    const active = await admin.from('users').select('id').eq('role', 'admin').eq('is_active', true);
-    expect(active.data).toHaveLength(1);
-    sql(`update public.users set role='admin' where id in ('${adminA.id}','${adminB.id}');`);
+    try {
+      expect(results.map(result => result.status).sort()).toEqual([200, 409]);
+      const active = await admin.from('users').select('id').eq('role', 'admin').eq('is_active', true);
+      expect(active.data).toHaveLength(1);
+    } finally {
+      const active = await admin.from('users').select('id').eq('role', 'admin').eq('is_active', true).single();
+      if (active.error) throw active.error;
+      await changeAccess(active.data.id === adminA.id ? aa : bb, active.data.id === adminA.id ? adminB.id : adminA.id, { role: 'admin' });
+    }
     expect((await request(`/api/v1/users/${customerA.id}/access`, aa, patch({ is_active: false }, '1'))).status).toBe(409);
   });
   it('recovers a real Auth invitation without another delivery and never promotes on retry', async () => {
@@ -183,7 +200,7 @@ describe('real Auth, HTTP and Data API', () => {
     await expect(restorePasswordSession(session().client, '#access_token=bad&type=invite')).rejects.toThrow();
     const response = await request('/api/v1/staff/invitations', aa, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, display_name: 'Invited staff' }) });
     expect(response.status).toBe(202); expect(await response.json()).toMatchObject({ data: { accepted: true } });
-    sql(`update public.users set role='customer' where id='${invited.id}';`);
+    await changeAccess(aa, invited.id, { role: 'customer' });
     expect(await inviteStaff({ id: adminA.id, role: 'admin' }, { email, display_name: 'Invited staff' })).toEqual({ accepted: true });
     expect((await admin.from('users').select('role').eq('id', invited.id).single()).data?.role).toBe('customer');
   });
