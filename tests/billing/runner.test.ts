@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/api/errors";
+import { requireJobActor } from "@/lib/api/job-auth";
 import { bindBillingServices } from "@/modules/billing/service";
 import type { BillingServices } from "@/modules/billing/service";
 import { createBillingRunHandler } from "@/modules/billing/runner";
-import { admin, IDS, makeBindings } from "./fixtures";
+import { IDS, makeBindings } from "./fixtures";
 
-function handler(runBilling: BillingServices["runBilling"], verifyJob = vi.fn(async () => admin)) {
+const job = { kind: "billing_job" } as const;
+
+function handler(runBilling: BillingServices["runBilling"], verifyJob = vi.fn(async () => job)) {
   return {
     POST: createBillingRunHandler({
       verifyJob,
@@ -25,6 +28,28 @@ function request(body: string, init: RequestInit = {}) {
 }
 
 describe("billing runner handler", () => {
+  it("binds D1's job-secret verifier directly without a user session", async () => {
+    vi.stubEnv("BILLING_JOB_SECRET", "fake-billing-job-secret-at-least-32-characters");
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const listDue = vi.fn(async () => [] as string[]);
+      const services = bindBillingServices(makeBindings({
+        requireActor: async () => { throw new Error("A billing job must not use a user session"); },
+        listDueSubscriptionIds: listDue,
+      }));
+      const POST = createBillingRunHandler({ verifyJob: requireJobActor, services });
+      const response = await POST(request("{}", { headers: {
+        "content-type": "application/json",
+        authorization: "Bearer fake-billing-job-secret-at-least-32-characters",
+      } }));
+      expect(response.status).toBe(200);
+      expect(listDue).toHaveBeenCalledWith(100);
+    } finally {
+      vi.unstubAllEnvs();
+      log.mockRestore();
+    }
+  });
+
   it("uses only the verified job actor and returns a private batch result", async () => {
     const runBilling = vi.fn(async () => ({ processed: 2, failed: 0, has_more: false }));
     const { POST, verifyJob } = handler(runBilling);
@@ -37,7 +62,7 @@ describe("billing runner handler", () => {
       request_id: expect.any(String),
     });
     expect(verifyJob).toHaveBeenCalledWith(incoming);
-    expect(runBilling).toHaveBeenCalledWith(admin, { limit: 5 });
+    expect(runBilling).toHaveBeenCalledWith(job, { limit: 5 });
   });
 
   it("rejects methods, content types, malformed JSON and unverified jobs", async () => {
@@ -68,7 +93,7 @@ describe("billing runner handler", () => {
   it("does not accept a client-supplied actor and redacts unexpected failures", async () => {
     const listDue = vi.fn(async () => [] as string[]);
     const services = bindBillingServices(makeBindings({ listDueSubscriptionIds: listDue }));
-    const real = createBillingRunHandler({ verifyJob: async () => admin, services });
+    const real = createBillingRunHandler({ verifyJob: async () => job, services });
     const spoofed = await real(
       request(JSON.stringify({ limit: 1, actor_id: IDS.admin, role: "admin" })),
     );
@@ -84,7 +109,7 @@ describe("billing runner handler", () => {
     const text = JSON.stringify(await response.json());
     expect(text).not.toContain("secret database detail");
     expect(text).toContain("INTERNAL_ERROR");
-    expect(runBilling).toHaveBeenCalledWith(admin, { limit: 1 });
+    expect(runBilling).toHaveBeenCalledWith(job, { limit: 1 });
   });
 
   it("maps verified job authorization failures without invoking billing", async () => {

@@ -66,10 +66,10 @@ insert into public.products(id,name,product_type,sales_price_minor,cost_price_mi
 insert into public.plans(id,product_id,name,price_minor,currency,billing_interval) values
   ('40000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001','Pricing plan',100,'INR','monthly');
 
-insert into public.discounts(id,code,name,scope,kind,percent_bps,currency,min_quantity,min_subtotal_minor,starts_at,max_uses,is_active) values
-  ('80000000-0000-4000-8000-000000000001','PRICE-PCT','Product percentage','product','percentage',5000,null,3,0,clock_timestamp() - interval '1 day',1,true),
-  ('80000000-0000-4000-8000-000000000002','PRICE-FIXED','Subscription fixed','subscription','fixed',null,'INR',1,0,clock_timestamp() - interval '1 day',null,true),
-  ('80000000-0000-4000-8000-000000000003','PRICE-LAST','Last use','subscription','percentage',1000,null,1,0,clock_timestamp() - interval '1 day',1,true);
+insert into public.discounts(id,code,name,scope,kind,amount_minor,percent_bps,currency,min_quantity,min_subtotal_minor,starts_at,max_uses,is_active) values
+  ('80000000-0000-4000-8000-000000000001','PRICE-PCT','Product percentage','product','percentage',null,5000,null,3,0,clock_timestamp() - interval '1 day',1,true),
+  ('80000000-0000-4000-8000-000000000002','PRICE-FIXED','Subscription fixed','subscription','fixed',1000,null,'INR',1,0,clock_timestamp() - interval '1 day',null,true),
+  ('80000000-0000-4000-8000-000000000003','PRICE-LAST','Last use','subscription','percentage',null,1000,null,1,0,clock_timestamp() - interval '1 day',1,true);
 insert into public.discount_products(discount_id,product_id) values
   ('80000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000001');
 

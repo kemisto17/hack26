@@ -14,7 +14,7 @@ export type SubscriptionBindings = {
   readTemplate(actor: Actor, id: string): Promise<TemplateDTO | null>;
   readTemplates(actor: Actor, query: PageQuery): Promise<Page<TemplateDTO>>;
   readPlanPolicy(actor: Actor, planId: string): Promise<PlanPolicy>;
-  priceQuote(actor: Actor, input: { plan_id: string; lines: LineSelection[]; at: string }): Promise<{ currency: string; lines: PricedLine[]; subtotal_minor: string }>;
+  priceQuote(actor: Actor, input: { plan_id: string; lines: LineSelection[]; at: string }): Promise<{ currency: string; lines: Omit<PricedLine, "id">[]; subtotal_minor: string }>;
   // These calls MUST each execute a single service-role-only PostgreSQL RPC.
   createSubscriptionTransaction(args: { p_actor_id: string; p_request_key: string; p_input: CreateSubscriptionInput }): Promise<SubscriptionDTO>;
   mutateSubscriptionTransaction(args: { p_actor_id: string; p_subscription_id: string; p_expected_version: string; p_action: SubscriptionAction; p_input: Record<string, unknown> }): Promise<SubscriptionDTO>;

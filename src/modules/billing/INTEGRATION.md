@@ -58,7 +58,9 @@ getReport(actor, query)
 runBilling(jobActor, { limit })
 ```
 
-`runner.ts` exports `createBillingRunHandler` and `BillingJobVerifier`.
+`runner.ts` exports `createBillingRunHandler` and `BillingJobVerifier`. The verifier
+returns D1's distinct `{kind:'billing_job'}` actor, synchronously or asynchronously;
+pass `requireJobActor` directly. User session actors cannot run billing.
 
 ### Contract clarification: draft `customer_snapshot` is null
 
@@ -123,8 +125,8 @@ match the proposed SQL parameters.
 4. **D1 migration — done on `main` (`ecc1586`):** sequence, private helpers, four
    public RPCs, grants and `private` schema usage for `service_role` are merged.
    The disposable-database SQL tests are still an open release gate.
-5. **D1 job verifier — partial:** `requireJobActor` is on `main`; the
-   `verifyBillingJob` adapter D4's runner injects is not yet written.
+5. **D1 job verifier — available:** `requireJobActor` is on `main` and can be
+   passed directly as the runner's `verifyJob` binding.
 6. **Compose bindings — open, D1-owned:** the request-scoped adapter from D1
    clients, including the read bindings in §2.
 7. **Mount routes/pages — blocked on 2, 5 and 6.** D4 owns the route/page files
@@ -324,8 +326,6 @@ D1 owns these per the workstream split; D4 must not create or overwrite them.
 - Read bindings (`readInvoice`, `readInvoices`, `readPayments`, `readReport`,
   `listDueSubscriptionIds`, `hasMoreDueSubscriptions`, `logBillingFailure`) and
   the request-scoped service composition.
-- Job verifier `verifyBillingJob` (D1 has `requireJobActor` on main; D4's runner
-  takes an injected verifier).
 - The D4 route/page mounting step and `supabase/tests/billing.sql`.
 
 Until item 6 is fixed and the SQL tests are actually run, the billing boundary is

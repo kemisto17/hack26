@@ -71,7 +71,7 @@ function calculateDiscount(discount: PricingDiscount | null, input: InvoicePrici
   for (const i of scope.slice().sort((a, b) => lines[a]!.id < lines[b]!.id ? -1 : lines[a]!.id > lines[b]!.id ? 1 : 0)) {
     if (remainder === BigInt(0)) break;
     const capacity = BigInt(lines[i]!.unit_price_minor) * BigInt(lines[i]!.quantity) - allocations[i]!;
-    const cents = capacity < remainder ? capacity : remainder;
+    const cents = capacity > BigInt(0) ? BigInt(1) : BigInt(0);
     allocations[i] = allocations[i]! + cents;
     remainder -= cents;
   }

@@ -9,7 +9,7 @@ import { requireActor } from "../identity/service";
 import { CatalogError } from "./errors";
 import { parseCreatePlan, parseCreateProduct, parseCreateTaxRule, parseCreateVariant, parseUpdatePlan, parseUpdateProduct, parseUpdateTaxRule, parseUpdateVariant, validatePlanResult } from "./config-validation";
 import { priceInvoice as priceInvoiceDomain, priceQuote as priceQuoteDomain } from "./domain";
-import { parseInvoicePricing, parsePriceQuote, uuid } from "./validation";
+import { parseInvoicePricing, parsePriceQuote, timestamp, uuid } from "./validation";
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type VariantRow = Database["public"]["Tables"]["variants"]["Row"];
@@ -126,7 +126,8 @@ function pageInput(query: PageQuery, scope: string, day?: string): ParsedPage {
     if (typeof query.cursor !== "string" || !query.cursor || query.cursor.length > MAX_CURSOR_LENGTH) throw new AppError("VALIDATION_ERROR", "Invalid page cursor.");
     try {
       const value = JSON.parse(Buffer.from(query.cursor, "base64url").toString("utf8")) as Record<string, unknown>;
-      if (value.scope !== scope || typeof value.created_at !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value.created_at) || !Number.isFinite(Date.parse(value.created_at)) || new Date(value.created_at).toISOString().replace(/\.\d{3}Z$/, "Z") !== value.created_at.replace(/\.\d{3}Z$/, "Z") || typeof value.id !== "string" || (day !== undefined && value.day !== day)) throw new Error();
+      if (value.scope !== scope || typeof value.created_at !== "string" || typeof value.id !== "string" || (day !== undefined && value.day !== day)) throw new Error();
+      timestamp(value.created_at);
       cursor = { scope, created_at: value.created_at, id: parseUuid(value.id), ...(day === undefined ? {} : { day }) };
     } catch { throw new AppError("VALIDATION_ERROR", "Invalid page cursor."); }
   }

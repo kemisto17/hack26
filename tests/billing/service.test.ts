@@ -3,6 +3,7 @@ import { AppError } from "@/lib/api/errors";
 import { fingerprintRequest } from "@/lib/api/idempotency";
 import { bindBillingServices, billingReadOnlyHelpers } from "@/modules/billing/service";
 import { SEND_UNAVAILABLE_MESSAGE } from "@/modules/billing/contracts";
+import type { JobActor } from "@/lib/api/contracts";
 import {
   IDS,
   admin,
@@ -21,7 +22,23 @@ function bind(overrides: Parameters<typeof makeBindings>[0] = {}) {
   return bindBillingServices(makeBindings(overrides));
 }
 
+const job: JobActor = { kind: "billing_job" };
+
 describe("session verification", () => {
+  it("rejects unknown current roles before reading invoice or payment data", async () => {
+    const readInvoices = vi.fn(async () => ({ items: [makeSummary()], next_cursor: null }));
+    const readPayments = vi.fn(async () => ({ items: [makePayment()], next_cursor: null }));
+    const services = bind({
+      requireActor: async () => ({ ...staff, role: "unexpected" as never }),
+      readInvoices,
+      readPayments,
+    });
+    await expect(services.listInvoices(staff)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(services.listPayments(staff)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(readInvoices).not.toHaveBeenCalled();
+    expect(readPayments).not.toHaveBeenCalled();
+  });
+
   it("rejects actor mismatches and uses the freshly verified role", async () => {
     const services = bind({ requireActor: async () => staff });
     await expect(services.getInvoice({ ...staff, id: customerA.id }, IDS.invoice)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -278,6 +295,11 @@ describe("payments", () => {
 });
 
 describe("reports and billing runs", () => {
+  it("accepts the distinct billing job actor and rejects user sessions", async () => {
+    const services = bind();
+    await expect(services.runBilling(job, {})).resolves.toMatchObject({ processed: 0, failed: 0 });
+    await expect(services.runBilling(admin as never, {})).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
   it("keeps reports staff-only and validates the read projection", async () => {
     const services = bind();
     await expect(services.getReport(staff, { from: "2026-01-01T00:00:00Z", to: "2027-01-01T00:00:00Z" })).resolves.toMatchObject({
@@ -308,21 +330,21 @@ describe("reports and billing runs", () => {
       logBillingFailure: log,
       hasMoreDueSubscriptions: hasMore,
     });
-    await expect(services.runBilling(admin, { limit: 5 })).resolves.toEqual({ processed: 1, failed: 1, has_more: true });
+    await expect(services.runBilling(job, { limit: 5 })).resolves.toEqual({ processed: 1, failed: 1, has_more: true });
     expect(list).toHaveBeenCalledWith(5);
     expect(generate).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenCalledWith(IDS.otherInvoice, "NOT_DUE");
     expect(hasMore).toHaveBeenCalledOnce();
 
-    await expect(services.runBilling(customerA, {})).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(services.runBilling(admin, { limit: 501 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(services.runBilling(customerA as never, {})).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(services.runBilling(job, { limit: 501 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   it("derives has_more from a full batch when the binding cannot answer", async () => {
     const services = bind({ listDueSubscriptionIds: async () => [IDS.subscription, IDS.otherInvoice] });
-    await expect(services.runBilling(staff, { limit: 2 })).resolves.toMatchObject({ has_more: true });
+    await expect(services.runBilling(job, { limit: 2 })).resolves.toMatchObject({ has_more: true });
     const short = bind({ listDueSubscriptionIds: async () => [IDS.subscription] });
-    await expect(short.runBilling(staff, { limit: 2 })).resolves.toMatchObject({ has_more: false });
+    await expect(short.runBilling(job, { limit: 2 })).resolves.toMatchObject({ has_more: false });
   });
 });
 

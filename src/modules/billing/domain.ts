@@ -184,7 +184,7 @@ export function planInvoicePeriod(
     return { kind: "not_billable", reason: "before_start", next_billing_at: snapshot.next_billing_at };
   }
 
-  let cutoff = options.cutoff ?? expires;
+  let cutoff = options.cutoff && options.cutoff < expires ? options.cutoff : expires;
   if (closed && closed.getTime() < cutoff.getTime()) cutoff = closed;
   if (start.getTime() >= cutoff.getTime()) {
     return { kind: "not_billable", reason: "expired", next_billing_at: snapshot.next_billing_at };

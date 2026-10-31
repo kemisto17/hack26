@@ -135,6 +135,16 @@ describe("billing period anchor", () => {
 });
 
 describe("due-period planning", () => {
+  it("uses an explicit cutoff only to shorten billing before expiry", () => {
+    const schedule = makeSchedule({ expires_at: "2026-01-15T00:00:00.000Z" });
+    expect(planInvoicePeriod(schedule, at("2026-03-01T00:00:00Z"), {
+      cutoff: at("2026-02-01T00:00:00Z"),
+    })).toMatchObject({ kind: "due", period_end: schedule.expires_at });
+    expect(planInvoicePeriod(schedule, at("2026-03-01T00:00:00Z"), {
+      cutoff: at("2026-01-10T00:00:00Z"),
+    })).toMatchObject({ kind: "due", period_end: "2026-01-10T00:00:00.000Z" });
+  });
+
   it("bills a period that started exactly now and clamps the final end to expiry", () => {
     const due = planInvoicePeriod(makeSchedule(), at("2026-01-01T00:00:00.000Z"));
     expect(due).toEqual({

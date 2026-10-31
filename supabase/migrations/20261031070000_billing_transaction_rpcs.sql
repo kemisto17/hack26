@@ -487,7 +487,7 @@ begin
   end if;
 
   update public.invoices
-  set status = 'confirmed',
+  set status = case when total_minor = 0 then 'paid' else 'confirmed' end,
       issued_at = v_now,
       customer_snapshot = jsonb_build_object(
         'display_name', v_name,
@@ -667,13 +667,13 @@ begin
   if p_input ? 'external_reference' and p_input->'external_reference' <> 'null'::jsonb then
     if jsonb_typeof(p_input->'external_reference') <> 'string' then
       raise exception 'VALIDATION_ERROR: external_reference is invalid' using errcode = 'P0001';
-    end;
+    end if;
     v_reference := btrim(p_input->>'external_reference');
     if length(v_reference) < 1
        or length(v_reference) > 200
        or v_reference ~ '[[:cntrl:]]' then
       raise exception 'VALIDATION_ERROR: external_reference is invalid' using errcode = 'P0001';
-    end;
+    end if;
   end if;
 
   select coalesce(sum(p.amount_minor), 0) into v_paid
