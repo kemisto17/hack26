@@ -110,28 +110,29 @@ match the proposed SQL parameters.
 
 ## 3. Integration order
 
-1. **D1 identity:** merge `feat/d1-foundation` identity exports (`requireActor`,
-   `getBillingContact`, `fingerprintRequest`, error/response helpers).
-2. **D2 pricing:** review and land `private.price_invoice_draft` plus the shared
-   invoice pricing DTO/types. D4 does not duplicate pricing arithmetic.
-3. **D3 schedule contract:** review
-   `private.generate_next_invoice_locked(p_subscription_id, p_cutoff)` and use it
-   in close/pause under the same subscription row lock, draining due periods while
-   the row is still `active` before the final state update. There is no
-   "allow closed" flag: a closed schedule never advances. D3 remains the owner of
-   schedule meaning.
-4. **D1 migration:** add the sequence, private helpers, four public RPCs, grants,
-   `private` schema usage for `service_role`, and the real SQL tests. Do not put
-   financial mutation routes live before this migration is applied.
-5. **D1 job verifier:** add `verifyBillingJob(request)` using a distinct
-   `BILLING_JOB_SECRET`, constant-time comparison, no cookie fallback and redacted
-   logs.
-6. **Compose bindings:** create the request-scoped adapter from D1 clients. Server
-   reads/actions use the verified user; the runner uses service role only after
-   `verifyBillingJob`.
-7. **Mount routes/pages** and run the real local Supabase flow.
+1. **D1 identity — done on `main` (`3f6531b`):** `requireActor`,
+   `getBillingContact`, `fingerprintRequest`, error/response helpers,
+   `createSessionClient`/`createAdminClient` and `requireJobActor`.
+2. **D2 pricing — open:** review and land `private.price_invoice_draft` plus the
+   shared invoice pricing DTO/types. D4 does not duplicate pricing arithmetic.
+3. **D3 schedule contract — done:** `private.generate_next_invoice_locked(
+   p_subscription_id, p_cutoff)` is agreed and used in close/pause under the same
+   subscription row lock, draining due periods while the row is still `active`
+   before the final state update. There is no "allow closed" flag; D3 remains the
+   owner of schedule meaning.
+4. **D1 migration — done on `main` (`ecc1586`):** sequence, private helpers, four
+   public RPCs, grants and `private` schema usage for `service_role` are merged.
+   The disposable-database SQL tests are still an open release gate.
+5. **D1 job verifier — partial:** `requireJobActor` is on `main`; the
+   `verifyBillingJob` adapter D4's runner injects is not yet written.
+6. **Compose bindings — open, D1-owned:** the request-scoped adapter from D1
+   clients, including the read bindings in §2.
+7. **Mount routes/pages — blocked on 2, 5 and 6.** D4 owns the route/page files
+   but will not create them until the bindings exist; a mounted route must never
+   bypass authorization or call a missing RPC.
+8. **Run the real local Supabase flow** and record the observed results.
 
-## 4. Planned route/page map (not mounted yet)
+## 4. Planned route/page map (API routes unmounted)
 
 All API routes live under `/api/v1`. Every mutation must validate Origin, session,
 `If-Match`, input and ownership server-side through D1 helpers and the service.
@@ -171,6 +172,23 @@ No code path sets `sent_at`; printing never issues a draft.
 
 `InvoiceDetail` ignores staff callbacks when `role === "customer"`; the service and
 SQL remain authoritative. Hiding a link is not authorization.
+
+### Portal page shells landed by the customer-web commit
+
+`origin/main` `38cddf1` (customer website workstream) already created the three
+portal page files above, plus `src/components/customer-web/**`. They verify the
+customer through D1 `requireActor`/`getMe` and render an explicit unavailable
+state: `customerCollection`/`customerDetail` return `{state:"unavailable"}` and
+never substitute mock rows, zero totals or direct table reads. The dblink of
+D3/D4 DTO types is display-only, so nothing claims a live endpoint.
+
+D4 must therefore **not** create duplicate page files. When D1's composition
+lands, replace only the unavailable branch of that boundary with the reviewed
+request-scoped read binding:
+`readInvoices`/`readInvoice`/`readPayments` (or an RPC-backed equivalent) for the
+same actor, keeping keySet cursor, ownership and no-store rules. Do not add
+client-side direct Supabase reads or invent REST endpoints to shortcut it.
+The staff pages under `(workspace)` and all ten API routes remain unmounted.
 
 Runner wiring after D1 lands:
 
@@ -226,7 +244,7 @@ The unit suite covers the pure period/anchor, payment, discount, report and
 validation rules plus service authorization, isolation, retry ordering, runner
 authentication/redaction and escaped HTML.
 
-**What the current tests do not prove, and cannot prove without D1's migration:**
+**What the current tests do not prove (they require a disposable Supabase database):**
 
 - row locks, transaction rollback and concurrent generation/payment/redeem
   behavior in PostgreSQL;
@@ -237,8 +255,10 @@ authentication/redaction and escaped HTML.
   portal isolation through the Data API;
 - report query correctness against real data.
 
-Those require D1's real local Supabase migration plus `supabase/tests/billing.sql`
-(the cases in `SQL-PROPOSALS.md` §10). They must not be marked passing until run.
+Those require the D1 billing migration now on `main` (`3f6531b`) plus
+`supabase/tests/billing.sql` (the cases in `SQL-PROPOSALS.md` §10). They must not
+be marked passing until run; D4 has no Docker/Supabase CLI available, and
+`private.price_invoice_draft` still raises until D2 lands its reviewed body.
 
 ## 7. Open decisions for reviewers
 
@@ -256,63 +276,57 @@ Those require D1's real local Supabase migration plus `supabase/tests/billing.sq
 5. **Draft customer snapshot nullability:** confirm the `BillingContact | null`
    clarification in `docs/api-contracts.md`.
 
-## 8. Review of D1 billing migration `58b7697` (not merged)
+## 8. Review of the D1 billing migration (resolved on `main` `3f6531b`)
 
 D1 added `supabase/migrations/20261031070000_billing_transaction_rpcs.sql` on
 `origin/feat/d1-identity`. The signatures match the D4 proposal exactly, including
 `private.generate_next_invoice_locked(p_subscription_id uuid, p_cutoff timestamptz)`
-and the additive `p_customer_snapshot` / `p_request_fingerprint` arguments. The
-migration has **not** been executed against a real database (no Docker/Supabase CLI
-in D1's or D4's environment), and review found one blocker.
+and the additive `p_customer_snapshot` / `p_request_fingerprint` arguments.
 
-### Blocking
+D4 reviewed `58b7697` and reported one clean-reset blocker plus hardening items.
+D1 published `ecc1586`; D4 re-diffed it and confirmed every finding is fixed. D1
+merged `feat/d1-identity` (`30f08a2`) and then `feat/d4-billing` (`3f6531b`) into
+`origin/main`. The migration has **not** been executed against a real database in
+D4's environment (no Docker/Supabase CLI), so D1's disposable-database SQL tests
+remain an open release gate.
 
-1. **Grants run before the functions exist.** Lines 19–31 revoke from and grant on
-   `public.generate_next_invoice(uuid)`, `public.confirm_invoice(uuid,uuid,bigint,jsonb)`,
-   `public.cancel_invoice(uuid,uuid,bigint)` and
-   `public.record_payment(uuid,uuid,bigint,uuid,jsonb,text)` before those functions
-   are created later in the same file. No earlier migration defines them, and
-   PostgreSQL has no `IF EXISTS` form for `REVOKE ... ON FUNCTION`, so a fresh
-   `supabase db reset --local` raises `42883 undefined_function` and rolls the
-   whole migration back. Move the revoke/grant block after the four `CREATE OR
-   REPLACE FUNCTION` statements.
-2. **`private.price_invoice_draft` is a raising stub** and
+### Resolved by `ecc1586`
+
+1. **Grants ran before the functions existed.** The public revoke/grant block now
+   follows the four `CREATE OR REPLACE FUNCTION` statements, so a fresh
+   `supabase db reset --local` no longer fails with `42883 undefined_function`.
+2. **Private helpers kept the default `PUBLIC` execute grant.** An explicit
+   `revoke all ... from public, anon, authenticated` plus
+   `grant execute ... to service_role` block now covers every private helper.
+3. **`private.advance_billing_period` was declared `immutable`** although it uses
+   `timestamptz + interval`. It is now `stable`.
+4. **`v_now` was initialised before the subscription `FOR UPDATE`.** It is now
+   assigned immediately after the lock, matching the agreed cutoff ordering.
+5. **Confirmation lock order was undocumented.** The migration now documents that
+   the D3 close/pause path already holds the subscription lock before invoice
+   materialization, so the effective order is subscription → invoice → discount,
+   while standalone confirmation takes invoice → discount and never locks the
+   subscription. D3 accepted this conditional on the D2 pricing helper not taking
+   a later conflicting subscription lock.
+
+### Remaining blocker
+
+6. **`private.price_invoice_draft` is still a raising stub** and
    `private.generate_next_invoice_locked` calls it with `'preview'`, so every
-   generation fails until D2 supplies the reviewed body. D2 ownership/review is
-   the remaining hard dependency for generate/confirm.
+   generation fails until D2 supplies the reviewed body as an additive migration.
+   D2 owns the pricing arithmetic, discount reservation and SQL test cases; D1
+   lands and verifies them.
 
-### Hardening / contract alignment
+### Still missing (D1-owned, not part of the migration)
 
-3. **Private helpers keep the default `PUBLIC` execute grant.** The access-control
-   migration grants `usage on schema private to authenticated`, and PostgreSQL
-   grants `EXECUTE` to `PUBLIC` by default, so `private.generate_next_invoice_locked`,
-   `private.price_invoice_draft`, `private.assert_staff` and the projection helpers
-   are callable by every authenticated role. Add `revoke all on function ... from
-   public, anon, authenticated` and explicit `grant execute ... to service_role`
-   for each private helper. Table privileges still stop writes, but the stated
-   "service_role only" contract is not enforced.
-4. **`private.advance_billing_period` is declared `immutable`** although it uses
-   `timestamptz + interval`. Declare it `stable` or make the arithmetic
-   timezone-free; otherwise the catalog claim is false.
-5. **`v_now` in `generate_next_invoice_locked` is initialised in `DECLARE`, before
-   the `FOR UPDATE` lock.** The agreed contract captures the cutoff after the
-   subscription lock. D3 passes its own `p_cutoff`, so this is not a correctness
-   blocker, but the helper should match the documented ordering.
-6. **Confirmation lock order:** `public.confirm_invoice` locks the invoice and then
-   the discount row, while D3's review names the global order
-   subscription → invoice → discount. A concurrent D3 close that drains the same
-   subscription can hold the subscription while waiting on the invoice insert.
-   D1/D3 should decide whether confirmation must also take `FOR UPDATE` on the
-   subscription (or document why invoice → discount is safe). Reconcile
-   `docs/api-contracts.md`, which currently says "lock invoice then discount row".
+D1 owns these per the workstream split; D4 must not create or overwrite them.
 
-### Still missing (not part of the migration)
-
-- D1 read bindings (`readInvoice`, `readInvoices`, `readPayments`, `readReport`,
-  `listDueSubscriptionIds`) and request-scoped service composition.
-- D1 job verifier `verifyBillingJob` (D1 has `requireJobActor` on the identity
-  branch, but D4's runner takes an injected verifier).
+- Read bindings (`readInvoice`, `readInvoices`, `readPayments`, `readReport`,
+  `listDueSubscriptionIds`, `hasMoreDueSubscriptions`, `logBillingFailure`) and
+  the request-scoped service composition.
+- Job verifier `verifyBillingJob` (D1 has `requireJobActor` on main; D4's runner
+  takes an injected verifier).
 - The D4 route/page mounting step and `supabase/tests/billing.sql`.
 
-Until items 1 and 2 are fixed, the migration must not be merged as a working
-billing boundary.
+Until item 6 is fixed and the SQL tests are actually run, the billing boundary is
+not proven functional even though the migration and D4 module are merged.

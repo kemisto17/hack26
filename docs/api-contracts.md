@@ -164,16 +164,16 @@ uses pagination on plans; include only products/variants needed for that page.
 Types exported by `src/modules/catalog/contracts.ts`:
 
 - `LineSelection = {product_id:UUID, variant_id?:UUID, quantity:number, is_primary:boolean}`.
-- `PricedLine = LineSelection & {id:UUID, description:string, variant_label:string|null, unit_price_minor:Minor}`.
 - `QuotePricedLine = LineSelection & {description:string,variant_label:string|null,unit_price_minor:Minor}`; quote previews do not fabricate persisted line IDs.
+- `PricedLine = QuotePricedLine & {id:UUID}` for persisted lines used as invoice sources.
 - `PriceQuoteInput = {plan_id:UUID,lines:LineSelection[],at:string}`.
 - `PriceQuoteDTO = {currency:string,lines:QuotePricedLine[],subtotal_minor:Minor}`.
-- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,period_start:string,at:string}`. Both instants are UTC; `period_start` selects the tax rule's effective calendar date, while `at` evaluates discount windows.
+- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,period_start:string,at:string}`. Both instants are UTC; `period_start` selects the tax rule's effective calendar date as `(period_start at time zone 'UTC')::date`, while `at` evaluates discount windows and usage preview.
 - `InvoicePricingDTO = {lines:Array<PricedLine & {discount_minor:Minor,tax_rule_id:UUID|null,tax_rate_bps:number,tax_minor:Minor,amount_minor:Minor}>,subtotal_minor:Minor,discount_minor:Minor,tax_minor:Minor,total_minor:Minor}`.
 
 Server exports `getCatalog(actor,query): Promise<{catalog:CatalogDTO,next_cursor:string|null}>`,
-`priceQuote(actor,input:PriceQuoteInput): Promise<PriceQuoteDTO>`, and
-`priceInvoice(actor,input:InvoicePricingInput): Promise<InvoicePricingDTO>`,
+`priceQuote(actor,input:PriceQuoteInput): Promise<PriceQuoteDTO>`,
+`priceInvoice(actor,input:InvoicePricingInput): Promise<InvoicePricingDTO>`, and
 `priceInvoiceDraft(actor,invoice_id): Promise<InvoicePricingDTO>` (loads the
 persisted draft's currency, `period_start`, frozen lines and attached discount
 through `readInvoiceLines(actor,invoiceId)`, then uses the server clock from
@@ -183,6 +183,13 @@ resource-specific `list/get/create/update` functions named after the resource
 preview, not a discount reservation; D4's confirmation transaction must recheck
 eligibility and usage under lock. D2 supplies the reviewed SQL arithmetic for that
 transaction through D1, so TypeScript preview is not the final financial authority.
+`CatalogBindings` supplies `currentInstant(): string` from the server clock and
+`readInvoiceLines(actor,invoiceId)`, a staff-only read that returns
+`{currency,period_start,lines,discount_id}` from the authoritative invoice header
+and its frozen lines. The caller passes only
+the invoice ID; it cannot provide pricing time, invoice period, or line prices.
+Invoice preview is advisory and must not be persisted as a reservation or treated
+as final; confirmation recalculates under SQL locks.
 
 ## Quotations and subscriptions (D3)
 

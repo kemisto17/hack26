@@ -2,8 +2,8 @@
 @import "./customer-web.css";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #202838;
+  --background: #f4f6f3;
+  --foreground: #202926;
 }
 
 @theme inline {
@@ -19,10 +19,3 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
-
-@layer components {
-  .form-input { @apply w-full rounded-md border border-current/25 bg-background px-3 py-2 text-foreground; }
-  .form-button { @apply rounded-md bg-foreground px-4 py-2 text-background disabled:cursor-wait disabled:opacity-50; }
-}
-
-:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }

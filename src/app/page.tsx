@@ -12,7 +12,11 @@ export default function Home({ searchParams }: { searchParams: Promise<Record<st
   return <Suspense fallback={<MarketingHome/>}><HomeEntry searchParams={searchParams} /></Suspense>;
 }
 async function HomeEntry({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  try { const actor = await requireActor(); if (actor.role === 'customer') redirect('/portal/dashboard'); }
+  try {
+    const actor = await requireActor();
+    if (actor.role === 'customer') redirect('/portal/dashboard');
+    if (actor.role === 'internal') redirect('/staff/dashboard');
+  }
   catch(error) { if(error instanceof AppError && ['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) return <MarketingHome/>; throw error; }
   return <Workspace searchParams={searchParams}/>;
 }
@@ -31,10 +35,10 @@ async function Workspace({ searchParams }: { searchParams: Promise<Record<string
     message = 'That directory link is invalid. Return to the first page.';
   }
   return <Shell user={user}><main id="main-content" className="grid gap-10 py-8">
-    <div><p className="text-sm uppercase tracking-widest opacity-60">Workspace</p><h1 className="mt-2 text-3xl font-semibold">Account overview</h1></div>
-    <ProfileForm key={user.version} user={user} />
-    {user.role === 'admin' && <InvitationForm />}
-    <section aria-labelledby="directory-heading" className="grid gap-4">
+    <div className="workspace-heading"><p className="eyebrow">Workspace</p><h1>Account overview</h1><p>Manage your profile, your team and account access.</p></div>
+    <div className="account-grid"><div className="account-panel"><ProfileForm key={user.version} user={user} /></div>
+    {user.role === 'admin' && <div className="account-panel"><InvitationForm /></div>}</div>
+    <section aria-labelledby="directory-heading" className="directory-panel grid gap-4">
       <h2 id="directory-heading" className="text-xl font-semibold">{user.role === 'admin' ? 'People and access' : 'Customer directory'}</h2>
       {message && <p role="alert">{message} <Link href="/" className="underline">First page</Link></p>}
       {directory && !directory.items.length && <p>No customers to display.</p>}
