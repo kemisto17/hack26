@@ -1,7 +1,8 @@
 # D4 billing integration notes
 
-**Current state: reusable contracts, domain rules, server service, runner factory,
-UI components and tests are implemented. No live page or API route is mounted.**
+**Current state: reusable contracts, domain rules, server service, HTTP handler
+factories, runner factory, UI components and tests are implemented. No live page
+or API route is mounted.**
 This is deliberate: D1 identity/auth, D1 transactional RPC migrations, the D1 job
 verifier and D2's reviewed pricing SQL are not available on this branch. Mounting
 routes now would either bypass authorization or call missing RPCs, which the
@@ -16,6 +17,7 @@ The SQL required to make this module functional is proposed in
 |---|---|
 | `contracts.ts` | Public DTOs, queries, constants, labels, status/error guidance. Safe to import from UI and other modules. |
 | `service.ts` | Server-only (`server-only`) bound service. All authorization and mutation orchestration. |
+| `http.ts` | `createBillingHttpHandlers({ services, requireActor, assertMutationOrigin })` factories for the invoice/payment/report routes. Origin, If-Match, Idempotency-Key, query and error boundaries live here; mounting is a thin D1 composition step. |
 | `runner.ts` | `createBillingRunHandler({ verifyJob, services })` factory for `POST /api/v1/billing/run`. |
 | `domain.ts` | Pure UTC period/anchor math, invoice arithmetic, payment decisions, discount eligibility, customer visibility, report validation. |
 | `validation.ts` | Strict transport parsing with unknown-key rejection, canonical money and future-`paid_at` checks. |
@@ -111,8 +113,11 @@ match the proposed SQL parameters.
    `getBillingContact`, `fingerprintRequest`, error/response helpers).
 2. **D2 pricing:** review and land `private.price_invoice_draft` plus the shared
    invoice pricing DTO/types. D4 does not duplicate pricing arithmetic.
-3. **D3 schedule contract:** review `private.generate_next_invoice_locked` and use
-   it in close/pause under the same subscription row lock. D3 remains the owner of
+3. **D3 schedule contract:** review
+   `private.generate_next_invoice_locked(p_subscription_id, p_cutoff)` and use it
+   in close/pause under the same subscription row lock, draining due periods while
+   the row is still `active` before the final state update. There is no
+   "allow closed" flag: a closed schedule never advances. D3 remains the owner of
    schedule meaning.
 4. **D1 migration:** add the sequence, private helpers, four public RPCs, grants,
    `private` schema usage for `service_role`, and the real SQL tests. Do not put

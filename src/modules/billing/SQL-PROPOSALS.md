@@ -341,14 +341,12 @@ billing logic or writing D4 tables directly.
 
 ```sql
 -- Callable only by service_role. D3 close/pause calls this inside its own
--- subscription lock before/with the state transition. p_cutoff is the
--- closed_at/pause instant; p_allow_closed is true only when the close
--- transaction has already changed status but still needs to materialize due
--- periods before the cutoff.
+-- subscription lock while the row is still active, before the final state
+-- update. p_cutoff is the pause instant or the already-captured closed_at.
+-- Closed schedules never advance: there is deliberately no "allow closed" flag.
 create or replace function private.generate_next_invoice_locked(
   p_subscription_id uuid,
-  p_cutoff timestamptz,
-  p_allow_closed boolean
+  p_cutoff timestamptz
 ) returns uuid
 language plpgsql
 security invoker
@@ -361,7 +359,6 @@ declare
   v_end timestamptz;
   v_cutoff timestamptz;
   v_invoice_id uuid;
-  v_existing_id uuid;
   v_number text;
   v_now timestamptz := clock_timestamp();
 begin
@@ -377,9 +374,8 @@ begin
   if not found then
     raise exception 'NOT_FOUND: subscription not found' using errcode = 'P0001';
   end if;
-  if v_sub.status <> 'active'
-     and not (p_allow_closed and v_sub.status = 'closed') then
-    return null;  -- service maps null to NOT_DUE
+  if v_sub.status <> 'active' then
+    return null;  -- draft/quotation/confirmed/paused/closed create no periods
   end if;
   if v_sub.next_billing_at is null or v_sub.billing_anchor_at is null then
     raise exception 'INTERNAL_ERROR: subscription schedule is missing' using errcode = 'P0001';
@@ -440,13 +436,13 @@ begin
   on conflict (subscription_id, period_start) do nothing
   returning id into v_invoice_id;
 
-  -- A conflict means another transaction already materialized this exact
-  -- period. Never advance the schedule again; return the existing row.
+  -- The subscription row lock serializes callers, so an existing invoice for
+  -- the current period means the stored schedule is already inconsistent.
+  -- Raise instead of returning the same row: a drain loop must always either
+  -- advance next_billing_at or stop, never spin on an unmoved schedule.
   if v_invoice_id is null then
-    select i.id into v_existing_id
-    from public.invoices i
-    where i.subscription_id = v_sub.id and i.period_start = v_start;
-    return v_existing_id;
+    raise exception 'INTERNAL_ERROR: subscription schedule already has an invoice for this period'
+      using errcode = 'P0001';
   end if;
 
   -- Historical line snapshot: description, variant, quantity and unit price are
@@ -482,20 +478,30 @@ security invoker
 set search_path = ''
 as $$
 begin
-  return private.generate_next_invoice_locked(p_subscription_id, null, false);
+  return private.generate_next_invoice_locked(p_subscription_id, null);
 end;
 $$;
 ```
 
 D3 close/pause contract:
 
-- D3 must hold the subscription `FOR UPDATE` lock before calling the helper.
-- Close passes `p_cutoff = closed_at` and then performs its final state change.
-  It may pass `p_allow_closed = true` only after setting `closed_at`, so
-  remaining due periods are materialized before the subscription leaves active.
-- Pause passes `p_cutoff = pause instant` while the row is still active, so only
-  periods before paused time are billed. Resumed periods follow the stored
-  schedule; paused time is never billed.
+- D3 must hold the subscription `FOR UPDATE` lock and capture ONE cutoff
+  (`clock_timestamp()`) after acquiring it. It passes that same instant as
+  `p_cutoff` on every drain call.
+- Drain while the subscription is still `active`, before the final state update:
+  loop the helper until it returns `null`. Each successful call materializes one
+  period and advances `next_billing_at`; a period starting at/after
+  `min(cutoff, expires_at)` is never billed and its end is capped. Iteration is
+  bounded (for example 10,000) so corrupt state raises `INTERNAL_ERROR` instead
+  of looping forever.
+- Close then performs one final update: `status='closed', closed_at=<cutoff>,
+  next_billing_at=null`. Pause performs `status='paused', next_billing_at=null`;
+  the baseline schema has no `paused_at` column, so do not persist one. Any
+  billing failure rolls back every invoice, line, redemption and state change.
+- Closing a draft, quotation, confirmed or paused subscription invents no
+  billable periods: the helper only bills `active` rows.
+- Resume restarts `billing_anchor_at` and `next_billing_at` at the resume instant
+  (no paused catch-up or proration) and never rewrites old invoice periods.
 - The helper never pauses, closes, resumes or renumbers a subscription.
 
 Generation rules proven by the SQL tests:
@@ -509,6 +515,9 @@ Generation rules proven by the SQL tests:
   anchor returns to Feb 29 in the next leap year.
 - Failure in pricing/line insertion rolls back the invoice, lines and schedule
   advance together.
+- Every successful call either advances `next_billing_at` past the current
+  period or returns `null`; a conflicting stored period raises `INTERNAL_ERROR`
+  so a D3 drain loop cannot spin.
 - The schedule advance uses the same row lock D3 pause/close must take.
 
 ## 5. `public.confirm_invoice(...) -> jsonb`
@@ -916,22 +925,29 @@ connections; do not mock SQL.
    capped at expiry; paused/closed/draft subscriptions do not bill; close
    serializes with generation; Jan 31, Feb 28/29 and yearly leap-day anchors are
    correct.
-5. **Rollback:** force a line/pricing error and prove no invoice, line, redemption
+5. **Close/pause drain:** a single captured cutoff drains every due period
+   (`period_start < min(cutoff, expires_at)`) with strictly increasing
+   `next_billing_at`, no duplicate periods and a capped final end; closing a
+   draft/quotation/confirmed/paused row invents nothing; concurrent pause/close
+   versus billing serializes on the subscription row; a forced billing failure
+   rolls back the close/pause and all invoices; the loop is bounded and a stored
+   period/invoice inconsistency raises instead of repeating.
+6. **Rollback:** force a line/pricing error and prove no invoice, line, redemption
    or schedule advance survives.
-6. **Confirmation:** stale version conflicts; non-draft rejects; totals equal
+7. **Confirmation:** stale version conflicts; non-draft rejects; totals equal
    line sums; snapshot is frozen and survives a later profile edit; tax/discount
    changes are recalculated; cancellation retains `(subscription_id,
    period_start)` uniqueness.
-7. **Discount:** one remaining use yields one redemption across concurrent
+8. **Discount:** one remaining use yields one redemption across concurrent
    confirmations; the loser gets `DISCOUNT_EXHAUSTED`; redemption amount equals
    header discount; a cancelled issued invoice retains its redemption.
-8. **Payments:** partial payment stays confirmed; exact balance marks paid;
+9. **Payments:** partial payment stays confirmed; exact balance marks paid;
    overpayment rejects; concurrent receipts cannot overpay; same request key and
    input replays after a stale version; same key with altered input conflicts;
    duplicate external reference across staff conflicts; the whole operation
    rolls back on insert/update failure.
-9. **Historical snapshot:** print/read an issued invoice after catalog price,
-   tax and subscription description edits; all amounts and lines are unchanged.
-10. **Reports:** mixed currencies never aggregate; `from` inclusive / `to`
+10. **Historical snapshot:** print/read an issued invoice after catalog price,
+    tax and subscription description edits; all amounts and lines are unchanged.
+11. **Reports:** mixed currencies never aggregate; `from` inclusive / `to`
     exclusive; overdue uses `due_on < current UTC date` and outstanding > 0;
     draft/cancelled invoices are excluded from billed totals.
