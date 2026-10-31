@@ -87,7 +87,7 @@ test('expired, inactive, exhausted and below-minimum discounts yield no discount
 
 test('invoice rejects malformed currency, invalid timestamp, overlong amount and a mismatched fixed discount currency', () => {
   const quote = calculateQuote({ plan, products, variants: [variant], lines, at });
-  const base = { currency: 'USD', lines: quote.lines, taxes: new Map(), productTaxRuleIds: new Map(), discount: null, at };
+  const base = { currency: 'USD', lines: quote.lines, taxes: new Map(), productTaxRuleIds: new Map(), discount: null, period_start: at, at };
   error(() => calculateInvoicePricing({ ...base, currency: 'US' }), 'VALIDATION_ERROR');
   error(() => calculateInvoicePricing({ ...base, at: '2026-02-30T00:00:00Z' }), 'VALIDATION_ERROR');
   error(() => calculateInvoicePricing({ ...base, lines: [{ ...quote.lines[0], unit_price_minor: '9000000000001' }, quote.lines[1]] }), 'VALIDATION_ERROR');
@@ -96,7 +96,7 @@ test('invoice rejects malformed currency, invalid timestamp, overlong amount and
 
 test('invoice rejects duplicate source lines and malformed discount mappings or percentages', () => {
   const quote = calculateQuote({ plan, products, variants: [variant], lines, at });
-  const base = { currency: 'USD', lines: quote.lines, taxes: new Map(), productTaxRuleIds: new Map(), discount: null, at };
+  const base = { currency: 'USD', lines: quote.lines, taxes: new Map(), productTaxRuleIds: new Map(), discount: null, period_start: at, at };
   error(() => calculateInvoicePricing({ ...base, lines: [quote.lines[0], { ...quote.lines[0] }] }), 'VALIDATION_ERROR');
   const productRule = { id: ids.discount, scope: 'product', kind: 'percentage', amount_minor: null, currency: null, percent_bps: 10001, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [ids.primary], max_uses: null, used_count: 0 };
   error(() => calculateInvoicePricing({ ...base, discount: productRule }), 'VALIDATION_ERROR');

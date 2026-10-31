@@ -174,7 +174,7 @@ begin
       exit when v_remainder = 0;
       select (l.quantity::numeric * l.unit_price_minor - l.discount_minor) into v_capacity
       from public.invoice_lines l where l.id = v_line.id;
-      v_piece := least(v_capacity, v_remainder);
+      v_piece := least(v_capacity, v_remainder, 1);
       update public.invoice_lines l set discount_minor = l.discount_minor + v_piece::bigint where l.id = v_line.id;
       v_remainder := v_remainder - v_piece;
     end loop;

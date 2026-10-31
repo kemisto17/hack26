@@ -9,6 +9,7 @@
  */
 import "server-only";
 import { AppError } from "@/lib/api/errors";
+import type { JobActor } from "@/lib/api/contracts";
 import { fingerprintRequest } from "@/lib/api/idempotency";
 import type {
   Actor,
@@ -247,6 +248,7 @@ export function bindBillingServices(bindings: BillingBindings) {
     if (!actor || !UUID_RE.test(actor.id)) throw new AppError("UNAUTHENTICATED", "A verified session is required.");
     const verified = await bindings.requireActor();
     if (!verified || verified.id !== actor.id) throw new AppError("FORBIDDEN", "Session actor mismatch.");
+    if (!["admin", "internal", "customer"].includes(verified.role)) throw new AppError("FORBIDDEN", "Invalid account role.");
     return verified;
   }
 
@@ -413,8 +415,8 @@ export function bindBillingServices(bindings: BillingBindings) {
      * Scheduler entry point. D1's job verifier is the ONLY source of jobActor;
      * this service does not read cookies, Authorization headers or env directly.
      */
-    async runBilling(jobActor: Actor, input: BillingRunInput = {}): Promise<BillingRunResult> {
-      if (!jobActor || !UUID_RE.test(jobActor.id) || !STAFF.has(jobActor.role)) {
+    async runBilling(jobActor: JobActor, input: BillingRunInput = {}): Promise<BillingRunResult> {
+      if (!jobActor || jobActor.kind !== "billing_job") {
         throw new AppError("FORBIDDEN", "A verified billing job actor is required.");
       }
       const { limit } = parseBillingRunInput(input);

@@ -48,6 +48,22 @@ describe("catalog pricing domain",()=>{
   expect(one.lines.find(l=>l.id===ids.line1)?.discount_minor).toBe("1");
   expect(one.total_minor).toBe((BigInt(one.subtotal_minor)-BigInt(one.discount_minor)+BigInt(one.tax_minor)).toString());
  });
+ it.each([
+  ["fixed",disc({kind:"fixed",amount_minor:"2",currency:"USD",percent_bps:null})],
+  ["percentage",disc({percent_bps:500})],
+ ] as const)("distributes a two-cent %s remainder one cent per UUID before calculating differing taxes",(_kind,discount)=>{
+  const lines=[
+   {...invoiceLines()[0]!,quantity:1,unit_price_minor:"10"},
+   {...invoiceLines()[1]!,quantity:1,unit_price_minor:"10"},
+   {...invoiceLines()[1]!,id:"00000000-0000-4000-8000-000000000013",quantity:1,unit_price_minor:"10"},
+  ];
+  const context={products:quoteContext().products,taxes:[{id:ids.tax,name:"Half tax",rate_bps:5000,starts_on:"2026-01-01",ends_on:null,is_active:true}],discount};
+  for(const ordered of [lines,[...lines].reverse()]) {
+   const result=priceInvoice(invoiceInput({lines:ordered}),context);
+   expect([...result.lines].sort((a,b)=>a.id.localeCompare(b.id)).map(line=>[line.discount_minor,line.tax_minor,line.amount_minor])).toEqual([["1","5","14"],["1","0","9"],["0","0","10"]]);
+   expect(result).toMatchObject({subtotal_minor:"30",discount_minor:"2",tax_minor:"5",total_minor:"33"});
+  }
+ });
  it("matches SQL scoped subtotal and quantity thresholds, empty mappings, and exhausted preview behavior",()=>{
   const productScoped=disc({scope:"product",product_ids:[ids.p2],min_subtotal_minor:"400",min_quantity:1,kind:"fixed",amount_minor:"100",currency:"USD",percent_bps:null});
   expect(priceInvoice(invoiceInput(),invoiceContext(productScoped)).discount_minor).toBe("100");
@@ -66,5 +82,17 @@ describe("catalog pricing domain",()=>{
   expect(()=>parsePriceQuote({plan_id:ids.plan,lines:selections,at:"not-a-date"})).toThrow("Invalid UTC timestamp.");
   expect(()=>parseInvoicePricing({...invoiceInput(),total_minor:"1"})).toThrow("Invalid fields.");
   expect(()=>parseInvoicePricing({...invoiceInput(),lines:[{...invoiceLines()[0]!,unit_price_minor:"01"}]})).toThrow("Invalid minor amount.");
+ });
+ it.each(["2026-02-30T00:00:00Z","2026-01-01T24:00:00Z"])("rejects calendar-normalized pricing timestamps: %s",at=>{
+  expect(()=>parsePriceQuote({plan_id:ids.plan,lines:selections,at})).toThrow(expect.objectContaining({code:"VALIDATION_ERROR"}));
+  expect(()=>parseInvoicePricing(invoiceInput({period_start:at}))).toThrow(expect.objectContaining({code:"VALIDATION_ERROR"}));
+ });
+ it.each([
+  ["duplicate persisted line IDs",()=>[invoiceLines()[0]!,{...invoiceLines()[1]!,id:ids.line1}]],
+  ["no primary line",()=>invoiceLines().map(line=>({...line,is_primary:false}))],
+  ["multiple primary lines",()=>invoiceLines().map(line=>({...line,is_primary:true}))],
+  ["unit prices above the database limit",()=>[{...invoiceLines()[0]!,unit_price_minor:"9000000000001"}]],
+ ] as const)("rejects invoice preview inputs with %s",(_name,lines)=>{
+  expect(()=>parseInvoicePricing(invoiceInput({lines:lines()}))).toThrow(expect.objectContaining({code:"VALIDATION_ERROR"}));
  });
 });

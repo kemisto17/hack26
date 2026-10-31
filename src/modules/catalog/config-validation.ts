@@ -120,7 +120,7 @@ export function parseCreatePlan(value: unknown): CreatePlanInput {
     ...(d.allow_pause !== undefined ? { allow_pause: bool(d.allow_pause, "allow_pause") } : {}), ...(d.allow_renew !== undefined ? { allow_renew: bool(d.allow_renew, "allow_renew") } : {}),
     ...(d.is_active !== undefined ? { is_active: bool(d.is_active, "is_active") } : {}),
   };
-  if (result.available_from && result.available_until && result.available_until < result.available_from) invalid("available_until");
+  if (result.available_until && result.available_until < (result.available_from ?? new Date().toISOString().slice(0, 10))) invalid("available_until");
   return result;
 }
 export function parseUpdatePlan(value: unknown): UpdatePlanInput {
@@ -175,7 +175,8 @@ function validateDiscountRule(rule: Pick<DiscountDTO, "scope" | "kind" | "amount
     if (rule.percent_bps !== null) invalid("percent_bps");
   } else {
     integer(rule.percent_bps, 1, 10000, "percent_bps");
-    if (rule.amount_minor !== null || rule.currency !== null) invalid("amount_minor/currency");
+    if (rule.amount_minor !== null) invalid("amount_minor");
+    if (rule.currency !== null) currency(rule.currency);
     if (BigInt(rule.min_subtotal_minor) > BigInt(0) && rule.currency === null) invalid("currency");
   }
 }

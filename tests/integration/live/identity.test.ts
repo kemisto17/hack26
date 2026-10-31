@@ -71,6 +71,10 @@ let staff: Awaited<ReturnType<typeof fixture>>;
 let a: Session, aa: Session, bb: Session, internal: Session;
 
 beforeAll(async () => {
+  // Last-admin assertions require an otherwise empty admin set, not a shared dev account.
+  const existing = await admin.from('users').select('id', { count: 'exact', head: true }).eq('role', 'admin').eq('is_active', true);
+  if (existing.error) throw existing.error;
+  if (existing.count !== 0) throw new Error('Live identity tests require a disposable database with no existing active administrators. No fixtures were created.');
   [customerA, customerB, adminA, adminB, staff] = await Promise.all(['customer-a', 'customer-b', 'admin-a', 'admin-b', 'staff'].map(fixture));
   sql(`update public.users set role='admin' where id in ('${adminA.id}','${adminB.id}'); update public.users set role='internal' where id='${staff.id}';`);
   [a, aa, bb, internal] = await Promise.all([customerA, adminA, adminB, staff].map(user => login(user.email)));
@@ -96,11 +100,11 @@ afterAll(async () => {
 
 describe('real Auth, HTTP and Data API', () => {
   it('streams role-appropriate shells without prerendering Auth session work', async () => {
-    const workspace = await request('/', aa);
+    const workspace = await request('/admin/dashboard', aa);
     const workspaceHTML = await workspace.text();
-    expect(workspaceHTML).toContain('Account overview');
-    expect(workspaceHTML).toContain('Invite internal staff');
-    const portalHTML = await (await request('/portal', a)).text();
+    expect(workspaceHTML).toContain('Business overview');
+    expect(workspaceHTML).toContain('/admin/staff/invite');
+    const portalHTML = await (await request('/portal/dashboard', a)).text();
     expect(portalHTML).toContain('Your account');
     expect(portalHTML).not.toContain('Invite internal staff');
     expect(serverOutput).not.toContain('unstable value `Date.now()`');

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   parseCreateDiscount, parseCreatePlan, parseCreateProduct, parseCreateTaxRule, parseCreateVariant,
   parseUpdateDiscount, parseUpdatePlan, parseUpdateProduct, parseUpdateTaxRule, parseUpdateVariant,
@@ -40,6 +40,16 @@ describe("catalog configuration input validation", () => {
     errorCode(() => parseCreatePlan({ product_id: id, name: "Bad", price_minor: "1", currency: "USD", billing_interval: "daily", available_from: "2026-05-01", available_until: "2026-04-30" }), "VALIDATION_ERROR");
   });
 
+  it("validates plan end dates against the default availability start", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-31T12:00:00Z"));
+    try {
+      const plan = { product_id: id, name: "Monthly", price_minor: "500", currency: "USD", billing_interval: "monthly" };
+      errorCode(() => parseCreatePlan({ ...plan, available_until: "2026-10-30" }), "VALIDATION_ERROR");
+      expect(parseCreatePlan({ ...plan, available_until: "2026-10-31" })).toMatchObject({ available_until: "2026-10-31" });
+    } finally { vi.useRealTimers(); }
+  });
+
   it("checks tax rate bounds, real calendar dates and inclusive date ordering", () => {
     expect(parseCreateTaxRule({ name: "VAT", rate_bps: 0, starts_on: "2026-01-01", ends_on: "2026-01-01" })).toMatchObject({ rate_bps: 0 });
     expect(parseUpdateTaxRule({ ends_on: null, is_active: false })).toEqual({ ends_on: null, is_active: false });
@@ -59,5 +69,10 @@ describe("catalog configuration input validation", () => {
     errorCode(() => parseCreateDiscount({ ...validDiscount, product_ids: [id, id] }), "VALIDATION_ERROR");
     errorCode(() => parseCreateDiscount({ ...validDiscount, max_uses: 0 }), "VALIDATION_ERROR");
     errorCode(() => validateDiscountResult({ id, code: "FIXED", name: "Fixed", version: "1", created_at: "", updated_at: "", scope: "subscription", kind: "percentage", amount_minor: "1", currency: "USD", percent_bps: 1000, min_quantity: 1, min_subtotal_minor: "0", starts_at: "2026-01-01T00:00:00.000Z", ends_at: null, max_uses: null, product_ids: [], is_active: true }), "VALIDATION_ERROR");
+  });
+
+  it("accepts a currency-scoped percentage discount with a minimum purchase", () => {
+    expect(parseCreateDiscount({ ...validDiscount, currency: "USD", min_subtotal_minor: "1000" })).toMatchObject({ currency: "USD", min_subtotal_minor: "1000", percent_bps: 1000 });
+    errorCode(() => parseCreateDiscount({ ...validDiscount, min_subtotal_minor: "1000" }), "VALIDATION_ERROR");
   });
 });

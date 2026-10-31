@@ -26,6 +26,11 @@ describe("catalog service security and invoice preview",()=>{
   expect(bindings.readInvoiceLines).toHaveBeenCalledWith(admin,invoiceId);
   expect(result.lines[0]?.id).toBe(lineId); expect(result.total_minor).toBe("100");
  });
+ it("prices a persisted draft with a PostgREST UTC period timestamp",async()=>{
+  const bindings=baseBindings(admin);
+  bindings.readInvoiceLines.mockResolvedValue({...await bindings.readInvoiceLines(),period_start:"2026-10-01T00:00:00.123456+00:00"});
+  await expect(bindCatalogServices(bindings).priceInvoiceDraft(admin,invoiceId)).resolves.toMatchObject({total_minor:"100"});
+ });
  it("maps absent invoice line binding to INTERNAL_ERROR and keeps stable error code/message",async()=>{
   const bindings=baseBindings(admin); delete (bindings as Partial<typeof bindings>).readInvoiceLines;
   const services=bindCatalogServices(bindings);

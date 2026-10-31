@@ -55,6 +55,25 @@ describe("catalog database service authorization and DTO boundary", () => {
     expect(page.next_cursor).toBeNull();
   });
 
+  it.each(["2026-01-01T00:00:00.123456+00:00", "2026-01-01T00:00:00.1Z"])("round trips database pagination timestamps without losing precision: %s", async created_at => {
+    const row = { ...product, sales_price_minor: 1200, cost_price_minor: 300, version: 4, created_at };
+    const first = chain({ data: [row, { ...row, id: "20000000-0000-4000-8000-000000000002" }], error: null });
+    const second = chain({ data: [], error: null });
+    mocks.requireActor.mockResolvedValue(admin);
+    mocks.sessionClient.mockResolvedValue({ from: vi.fn().mockReturnValueOnce(first.query).mockReturnValueOnce(second.query) });
+    const page = await listProducts(admin, { limit: 1 });
+    expect(page.next_cursor).toBeTypeOf("string");
+    await expect(listProducts(admin, { limit: 1, cursor: page.next_cursor! })).resolves.toEqual({ items: [], next_cursor: null });
+    expect(second.calls).toContainEqual(["or", `created_at.lt.${created_at},and(created_at.eq.${created_at},id.lt.${product.id})`]);
+  });
+
+  it.each(["2026-02-30T00:00:00Z", "2026-01-01T00:00:00Z),id.neq.null", "2026-01-01T00:00:00+01:00"])("rejects invalid or unsafe cursor timestamps before database reads: %s", async created_at => {
+    mocks.requireActor.mockResolvedValue(admin);
+    const cursor = Buffer.from(JSON.stringify({ scope: "products", created_at, id: product.id })).toString("base64url");
+    await expect(listProducts(admin, { cursor })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mocks.sessionClient).not.toHaveBeenCalled();
+  });
+
   it("returns only active safe catalog projections to customers", async () => {
     const planRow = { id: "30000000-0000-4000-8000-000000000001", product_id: product.id, name: "Monthly", price_minor: 500, currency: "USD", billing_interval: "monthly", min_quantity: 1, available_from: "2020-01-01", available_until: null, auto_close: true, allow_close: true, allow_pause: false, allow_renew: true, is_active: true, version: 2, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" };
     const planQuery = chain({ data: [planRow], error: null });

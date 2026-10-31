@@ -11,13 +11,13 @@
  */
 import "server-only";
 import { AppError } from "@/lib/api/errors";
-import type { Actor } from "@/lib/api/contracts";
+import type { JobActor } from "@/lib/api/contracts";
 import { errorResponse, successResponse } from "@/lib/api/response";
 import { jsonBody } from "@/lib/api/validation";
 import type { BillingRunInput } from "./contracts";
 import type { BillingServices } from "./service";
 
-export type BillingJobVerifier = (request: Request) => Promise<Actor>;
+export type BillingJobVerifier = (request: Request) => JobActor | Promise<JobActor>;
 
 export function createBillingRunHandler(deps: {
   verifyJob: BillingJobVerifier;
