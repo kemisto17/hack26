@@ -16,6 +16,7 @@ async function HomeEntry({ searchParams }: { searchParams: Promise<Record<string
     const actor = await requireActor();
     if (actor.role === 'customer') redirect('/portal/dashboard');
     if (actor.role === 'internal') redirect('/staff/dashboard');
+    if (actor.role === 'admin') redirect('/admin/dashboard');
   }
   catch(error) { if(error instanceof AppError && ['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) return <MarketingHome/>; throw error; }
   return <Workspace searchParams={searchParams}/>;
