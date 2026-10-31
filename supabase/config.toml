@@ -1,0 +1,31 @@
+# Local development only; hosted Auth settings must be configured separately.
+project_id = "hack26"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000/auth/callback", "http://localhost:3000/auth/callback"]
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 9
+# Built-in Supabase strength policy includes a digit as well as upper/lower/symbol.
+password_requirements = "lower_upper_letters_digits_symbols"
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true

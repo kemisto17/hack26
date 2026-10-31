@@ -1,3 +1,13 @@
+# Hack26
+
+Start with [shared project instructions](AGENTS.md), [architecture](docs/architecture.md),
+[schema and migrations](docs/database-schema.md), [API contracts](docs/api-contracts.md)
+and [four-developer ownership](docs/team-workstreams.md). The source problem statement
+is [in docs](docs/Subscription_Management_System.pdf). The current commit establishes
+the architecture/database baseline; product workflows are implementation targets.
+
+The starter application below is preserved.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
