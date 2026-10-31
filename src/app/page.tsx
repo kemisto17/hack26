@@ -1,14 +1,20 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { listAccessUsers, listCustomers } from '@/modules/identity/service';
+import { listAccessUsers, listCustomers, requireActor } from '@/modules/identity/service';
+import { MarketingHome } from '@/components/customer-web/marketing';
 import { pageUser, Shell } from '@/modules/identity/shell';
 import { ProfileForm } from '@/modules/identity/profile-form';
 import { AccessControls, InvitationForm } from '@/modules/identity/access-controls';
 import { AppError } from '@/lib/api/errors';
 
 export default function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  return <Suspense fallback={<p className="p-8" role="status">Loading your workspace…</p>}><Workspace searchParams={searchParams} /></Suspense>;
+  return <Suspense fallback={<MarketingHome/>}><HomeEntry searchParams={searchParams} /></Suspense>;
+}
+async function HomeEntry({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  try { const actor = await requireActor(); if (actor.role === 'customer') redirect('/portal/dashboard'); }
+  catch(error) { if(error instanceof AppError && ['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) return <MarketingHome/>; throw error; }
+  return <Workspace searchParams={searchParams}/>;
 }
 async function Workspace({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await pageUser();
