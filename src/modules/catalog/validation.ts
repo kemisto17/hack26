@@ -16,6 +16,11 @@ export function minor(input: unknown, allowZero = true): string {
   if ((!allowZero && parsed === BigInt(0)) || parsed > BigInt("9000000000000000")) invalid("minor amount");
   return input;
 }
+const supportedCurrencies = new Set(Intl.supportedValuesOf("currency"));
+export function supportedCurrency(input: unknown): string {
+  if (typeof input !== "string" || !/^[A-Z]{3}$/.test(input) || !supportedCurrencies.has(input)) invalid("supported currency");
+  return input;
+}
 function timestamp(input: unknown): string {
   if (typeof input !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/.test(input) || !Number.isFinite(Date.parse(input))) invalid("UTC timestamp");
   return new Date(input).toISOString();
@@ -44,6 +49,6 @@ function parsePricedLines(input: unknown): PricedLine[] {
 }
 export function parseInvoicePricing(input: unknown): InvoicePricingInput {
   const data = object(input, ["currency", "lines", "discount_id", "period_start", "at"]);
-  if (typeof data.currency !== "string" || !/^[A-Z]{3}$/.test(data.currency) || (data.discount_id !== null && data.discount_id !== undefined && typeof data.discount_id !== "string")) invalid("invoice pricing");
-  return { currency: data.currency, lines: parsePricedLines(data.lines), discount_id: data.discount_id == null ? null : uuid(data.discount_id), period_start: timestamp(data.period_start), at: timestamp(data.at) };
+  if ((data.discount_id !== null && data.discount_id !== undefined && typeof data.discount_id !== "string")) invalid("invoice pricing");
+  return { currency: supportedCurrency(data.currency), lines: parsePricedLines(data.lines), discount_id: data.discount_id == null ? null : uuid(data.discount_id), period_start: timestamp(data.period_start), at: timestamp(data.at) };
 }

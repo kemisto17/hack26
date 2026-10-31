@@ -339,3 +339,80 @@ this proposal author.
    lock respects subscription -> invoice -> discount for generation and invoice
    -> discount for confirmation. Verify same-invoice concurrent reserve calls
    cannot create duplicate redemption rows under the invoice lock.
+
+## D2 configuration mutation RPC proposal (D1 owns migration and SQL tests)
+
+Status: proposed for D1 review. Existing REST table grants permit service-role
+single-row catalog changes after a verified admin check. Discount configuration
+cannot use sequential REST writes because its row and `discount_products` set are
+one logical configuration; plan reference guards also need a database lock so a
+concurrent subscription/template reference cannot race a cadence edit.
+
+### `catalog_create_discount(p_actor_id uuid, p_input jsonb) returns jsonb`
+
+`p_input` is an allowlisted normalized `CreateDiscountInput`; `product_ids` is
+part of the JSON payload but is removed before inserting the `discounts` row.
+The function checks that the active `public.users` row for `p_actor_id` has role
+`admin`, validates the fixed/percentage field combinations and product/subscription
+mapping rules, inserts the discount and all mapped products in one transaction,
+and returns a safe `DiscountDTO` with the mapping list and version serialized as
+decimal strings. Any FK, duplicate code, check or insert failure rolls back the
+discount and every mapping.
+
+### `catalog_update_discount(p_actor_id uuid, p_discount_id uuid,
+p_expected_version bigint, p_input jsonb) returns jsonb`
+
+Lock the discount row `FOR UPDATE`; recheck the active admin actor and expected
+version inside that lock. Treat only keys in `p_input` as changes; `product_ids`
+replaces the complete mapping set, while omitted keys preserve stored values.
+Merge the row and mapping state, validate the complete resulting rule (including
+positive fixed amount/currency, percentage 1..10000 bps, date end exclusive,
+minimum currency, unique product IDs, nonempty mappings for product scope and
+empty mappings for subscription scope), update the row once, then replace its
+mapping rows in the same transaction. The update trigger owns timestamp/version
+advancement. The function returns `VERSION_CONFLICT` for a stale version,
+`NOT_FOUND` for a missing discount or product, and `VALIDATION_ERROR` for a
+malformed or invalid resulting rule. It never changes redemption rows or usage;
+confirmed invoices retain their snapshots and redemptions.
+
+Both functions are `SECURITY INVOKER`, use a fixed empty `search_path` and
+qualified object names, and are executable only by `service_role`. The RPC is
+called only after D2's verified actor/current-role check. There is no database
+delete operation; retirement is `is_active = false` through the update RPC.
+
+### `catalog_update_plan(p_actor_id uuid, p_plan_id uuid,
+p_expected_version bigint, p_input jsonb) returns jsonb`
+
+This optional companion keeps the documented immutability rule atomic. Lock the
+plan row, check the current active admin and expected version, merge the
+allowlisted update fields, and validate the resulting dates/product currency.
+If `product_id`, `currency`, or `billing_interval` changes, reject with
+`INVALID_TRANSITION` whenever a subscription or quotation template references
+the plan. The D3 subscription/template create transactions must take a compatible
+lock on the plan row before creating a reference; D1 coordinates that lock with
+D3. Update once under the row lock and return the versioned `PlanDTO`. Basic
+plan field updates that do not affect referenced cadence may remain a single
+conditional update if D1 and D3 confirm the lock behavior.
+
+### Required SQL tests for D1 integration
+
+Run as `anon`, `authenticated` and `service_role` on real local Supabase:
+
+1. `anon` and `authenticated` cannot execute any RPC; only `service_role` can.
+   A customer/internal/disabled actor ID supplied to the RPC is rejected even
+   though the caller has a service-role database connection; a current admin
+   succeeds.
+2. Fixed and percentage create/update success stores the expected row and exact
+   mapping set. Unknown JSON keys, duplicate/missing/unmapped product IDs,
+   currency/amount mismatches, invalid basis points and bad dates fail without
+   changing either table.
+3. A forced failure during mapping replacement rolls back the discount row,
+   trigger version increment and all mapping changes. Duplicate codes preserve
+   the prior data and return a safe validation conflict.
+4. Two updates using the same expected version serialize; exactly one succeeds,
+   the other receives `VERSION_CONFLICT`, and the row version advances once.
+   Stale updates do not change product mappings or usage counts.
+5. Plan cadence/product/currency changes succeed when no references exist and
+   fail when a subscription/template exists. Race a plan update against a
+   subscription/template creation using the shared plan lock; no committed
+   state may have a changed cadence after the reference becomes visible.

@@ -1,5 +1,6 @@
 import type { InvoiceContext, InvoicePricedLine, InvoicePricingDTO, InvoicePricingInput, PricingDiscount, PriceQuoteDTO, PriceQuoteInput, QuoteContext, TaxRule } from "./contracts";
 import { CatalogError } from "./errors";
+import { supportedCurrency } from "./validation";
 
 const MAX_UNIT = BigInt("9000000000000");
 const MAX_TOTAL = BigInt("9000000000000000");
@@ -17,6 +18,7 @@ export function roundBps(minor: bigint, bps: number): bigint {
 export function priceQuote(input: PriceQuoteInput, context: QuoteContext): PriceQuoteDTO {
   const plan = context.plan;
   if (!plan || !plan.is_active) throw new CatalogError("NOT_FOUND", "Plan not found.");
+  supportedCurrency(plan.currency);
   if (day(input.at) < plan.available_from || (plan.available_until && day(input.at) > plan.available_until)) fail("Plan is outside its availability window.");
   if (input.lines.length === 0 || input.lines.filter(line => line.is_primary).length !== 1 || input.lines.filter(line => line.is_primary)[0]?.product_id !== plan.product_id) fail("Exactly one primary line matching the plan product is required.");
   const products = new Map(context.products.map(p => [p.id, p]));

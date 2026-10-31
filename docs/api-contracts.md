@@ -154,14 +154,19 @@ Types exported by `src/modules/catalog/contracts.ts`:
 
 - `LineSelection = {product_id:UUID, variant_id?:UUID, quantity:number, is_primary:boolean}`.
 - `PricedLine = LineSelection & {id:UUID, description:string, variant_label:string|null, unit_price_minor:Minor}`.
+- `QuotePricedLine = LineSelection & {description:string,variant_label:string|null,unit_price_minor:Minor}`; quote previews do not fabricate persisted line IDs.
 - `PriceQuoteInput = {plan_id:UUID,lines:LineSelection[],at:string}`.
-- `PriceQuoteDTO = {currency:string,lines:PricedLine[],subtotal_minor:Minor}`.
-- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,at:string}`.
+- `PriceQuoteDTO = {currency:string,lines:QuotePricedLine[],subtotal_minor:Minor}`.
+- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,period_start:string,at:string}`. Both instants are UTC; `period_start` selects the tax rule's effective calendar date, while `at` evaluates discount windows.
 - `InvoicePricingDTO = {lines:Array<PricedLine & {discount_minor:Minor,tax_rule_id:UUID|null,tax_rate_bps:number,tax_minor:Minor,amount_minor:Minor}>,subtotal_minor:Minor,discount_minor:Minor,tax_minor:Minor,total_minor:Minor}`.
 
 Server exports `getCatalog(actor,query): Promise<{catalog:CatalogDTO,next_cursor:string|null}>`,
 `priceQuote(actor,input:PriceQuoteInput): Promise<PriceQuoteDTO>`, and
-`priceInvoice(actor,input:InvoicePricingInput): Promise<InvoicePricingDTO>` plus
+`priceInvoice(actor,input:InvoicePricingInput): Promise<InvoicePricingDTO>`,
+`priceInvoiceDraft(actor,invoice_id): Promise<InvoicePricingDTO>` (loads the
+persisted draft's currency, `period_start`, frozen lines and attached discount
+through `readInvoiceLines(actor,invoiceId)`, then uses the server clock from
+`currentInstant()` for `at`), plus
 resource-specific `list/get/create/update` functions named after the resource
 (e.g. `createProduct`, `updatePlan`). D2 owns their validation/DTOs. Pricing is a
 preview, not a discount reservation; D4's confirmation transaction must recheck

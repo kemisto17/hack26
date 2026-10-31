@@ -1,7 +1,8 @@
 import type {
   InvoicePricedLine, InvoicePricingDTO, LineSelection, PriceQuoteDTO,
-  PricingDiscount, PricingPlan, PricingProduct, PricingTaxRule, PricingVariant,
+  PricingDiscount, PricingPlan, PricingProduct, PricingVariant, TaxRule as PricingTaxRule,
 } from "./contracts";
+import { supportedCurrency } from "./validation";
 
 const MAX_UNIT = BigInt("9000000000000");
 const MAX_TOTAL = BigInt("9000000000000000");
@@ -40,7 +41,7 @@ function utcDate(value: string): string {
 }
 
 function validateCurrency(currency: string): void {
-  if (!/^[A-Z]{3}$/.test(currency)) fail("Currency must be an uppercase three-letter code.");
+  try { supportedCurrency(currency); } catch { fail("Currency must be a supported ISO currency code."); }
 }
 
 function validateLines(lines: LineSelection[]): void {
@@ -109,19 +110,20 @@ function roundHalfUp(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator / BigInt(2)) / denominator;
 }
 
-/** Discount/tax preview. `uses_remaining` is advisory; D4 must re-evaluate and
- * redeem atomically inside confirm_invoice. Tax dates are inclusive; discount
- * end timestamps are exclusive. */
+/** Discount/tax preview. Usage is advisory; D4 rechecks and redeems under lock.
+ * Tax uses the invoice period date; discount windows use the preview instant. */
 export function calculateInvoicePricing(args: {
   currency: string;
   lines: Array<{ id: string; product_id: string; quantity: number; unit_price_minor: string; description: string; variant_label: string | null; variant_id?: string; is_primary: boolean }>;
   taxes: Map<string, PricingTaxRule | undefined>;
   productTaxRuleIds: Map<string, string | null>;
   discount: PricingDiscount | null;
+  period_start: string;
   at: string;
 }): InvoicePricingDTO {
   validateCurrency(args.currency);
-  const day = utcDate(args.at);
+  const day = utcDate(args.period_start);
+  utcDate(args.at);
   validateLines(args.lines);
   if (new Set(args.lines.map(line => line.id)).size !== args.lines.length) fail("Invoice line IDs must be unique.");
   const rawSubtotal = subtotal(args.lines);
@@ -133,18 +135,19 @@ export function calculateInvoicePricing(args: {
     if (!Number.isSafeInteger(discount.min_quantity) || discount.min_quantity < 1 || discount.min_quantity > MAX_QUANTITY) fail("Invalid discount minimum quantity.");
     minor(discount.min_subtotal_minor, "discount.min_subtotal_minor", MAX_TOTAL);
     if (!Number.isFinite(Date.parse(discount.starts_at)) || (discount.ends_at !== null && !Number.isFinite(Date.parse(discount.ends_at)))) fail("Invalid discount dates.");
-    if (discount.uses_remaining !== null && (!Number.isSafeInteger(discount.uses_remaining) || discount.uses_remaining < 0)) fail("Invalid discount usage count.");
+    if (!Number.isSafeInteger(discount.used_count) || discount.used_count < 0 || (discount.max_uses !== null && (!Number.isSafeInteger(discount.max_uses) || discount.max_uses < 1))) fail("Invalid discount usage count.");
     if (discount.scope === "product" && (!discount.product_ids.length || new Set(discount.product_ids).size !== discount.product_ids.length)) fail("Product discounts require unique eligible products.");
     if (discount.scope === "subscription" && discount.product_ids.length) fail("Subscription discounts cannot include product mappings.");
     if (discount.kind === "fixed") {
       if (discount.amount_minor === null || discount.currency === null || discount.percent_bps !== null) fail("Invalid fixed discount rule.");
       validateCurrency(discount.currency);
       minor(discount.amount_minor, "discount.amount_minor", MAX_TOTAL);
-    } else if (discount.amount_minor !== null || discount.currency !== null || !Number.isInteger(discount.percent_bps) || discount.percent_bps! < 0 || discount.percent_bps! > 10000) {
+    } else if (discount.amount_minor !== null || discount.currency !== null || !Number.isInteger(discount.percent_bps) || discount.percent_bps! < 1 || discount.percent_bps! > 10000) {
       fail("Invalid percentage discount rule.");
     }
   }
-  if (discount && discount.is_active && discount.starts_at <= args.at && (discount.ends_at === null || args.at < discount.ends_at) && (discount.uses_remaining === null || discount.uses_remaining > 0)) {
+  const discountAt = Date.parse(args.at);
+  if (discount && discount.is_active && Date.parse(discount.starts_at) <= discountAt && (discount.ends_at === null || discountAt < Date.parse(discount.ends_at)) && (discount.max_uses === null || discount.used_count < discount.max_uses)) {
     if (discount.kind === "fixed" && discount.currency !== args.currency) fail("Discount currency must match invoice currency.");
     const eligible = args.lines.filter(line => discount.scope === "subscription" || discount.product_ids.includes(line.product_id));
     const eligibleQuantity = eligible.reduce((sum, line) => sum + line.quantity, 0);

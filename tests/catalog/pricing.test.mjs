@@ -51,8 +51,8 @@ test('quote rejects currency mismatch, below-zero adjusted price and primary qua
 
 test('invoice pricing applies capped fixed discount and half-up tax on discounted value', () => {
   const quote = calculateQuote({ plan, products, variants: [variant], lines, at });
-  const discounted = { id: ids.discount, scope: 'subscription', kind: 'fixed', amount_minor: '500', currency: 'USD', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], uses_remaining: 1 };
-  const result = calculateInvoicePricing({ currency: 'USD', lines: quote.lines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 1000, starts_on: '2026-01-01', ends_on: null, is_active: true }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, ids.tax]]), discount: discounted, at });
+  const discounted = { id: ids.discount, scope: 'subscription', kind: 'fixed', amount_minor: '500', currency: 'USD', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], max_uses: 1, used_count: 0 };
+  const result = calculateInvoicePricing({ currency: 'USD', lines: quote.lines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 1000, starts_on: '2026-01-01', ends_on: null, is_active: true }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, ids.tax]]), discount: discounted, period_start: at, at });
   assert.equal(result.subtotal_minor, '2700');
   assert.equal(result.discount_minor, '500');
   assert.equal(result.lines.reduce((sum, line) => sum + Number(line.discount_minor), 0), 500);
@@ -65,8 +65,8 @@ test('percentage discount rounds half up, allocates remainder by ascending line 
     { id: 'bbbb', product_id: ids.primary, quantity: 1, unit_price_minor: '1', description: 'A', variant_label: null, is_primary: true },
     { id: 'aaaa', product_id: ids.addon, quantity: 1, unit_price_minor: '1', description: 'B', variant_label: null, is_primary: false },
   ];
-  const discount = { id: ids.discount, scope: 'subscription', kind: 'percentage', amount_minor: null, currency: null, percent_bps: 5000, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], uses_remaining: null };
-  const result = calculateInvoicePricing({ currency: 'USD', lines: invoiceLines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 5000, starts_on: '2026-01-01', ends_on: null, is_active: true }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, ids.tax]]), discount, at });
+  const discount = { id: ids.discount, scope: 'subscription', kind: 'percentage', amount_minor: null, currency: null, percent_bps: 5000, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], max_uses: null, used_count: 0 };
+  const result = calculateInvoicePricing({ currency: 'USD', lines: invoiceLines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 5000, starts_on: '2026-01-01', ends_on: null, is_active: true }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, ids.tax]]), discount, period_start: at, at });
   assert.equal(result.discount_minor, '1'); // 50% of 2, rounded half up
   assert.equal(result.lines.find(line => line.id === 'aaaa').discount_minor, '1');
   assert.equal(result.lines.find(line => line.id === 'bbbb').discount_minor, '0');
@@ -76,9 +76,9 @@ test('percentage discount rounds half up, allocates remainder by ascending line 
 
 test('expired, inactive, exhausted and below-minimum discounts yield no discount; inactive tax is zero', () => {
   const quote = calculateQuote({ plan, products, variants: [variant], lines, at });
-  const discount = { id: ids.discount, scope: 'product', kind: 'fixed', amount_minor: '9000', currency: 'USD', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2027-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [ids.primary], uses_remaining: 1 };
-  const base = { currency: 'USD', lines: quote.lines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 1200, starts_on: '2026-01-01', ends_on: null, is_active: false }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, null]]), at };
-  for (const candidate of [discount, { ...discount, is_active: false, starts_at: '2026-01-01T00:00:00.000Z' }, { ...discount, uses_remaining: 0, starts_at: '2026-01-01T00:00:00.000Z' }, { ...discount, min_subtotal_minor: '999999', starts_at: '2026-01-01T00:00:00.000Z' }]) {
+  const discount = { id: ids.discount, scope: 'product', kind: 'fixed', amount_minor: '9000', currency: 'USD', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2027-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [ids.primary], max_uses: 1, used_count: 0 };
+  const base = { currency: 'USD', lines: quote.lines, taxes: new Map([[ids.tax, { id: ids.tax, rate_bps: 1200, starts_on: '2026-01-01', ends_on: null, is_active: false }]]), productTaxRuleIds: new Map([[ids.primary, ids.tax], [ids.addon, null]]), period_start: at, at };
+  for (const candidate of [discount, { ...discount, is_active: false, starts_at: '2026-01-01T00:00:00.000Z' }, { ...discount, used_count: 1, starts_at: '2026-01-01T00:00:00.000Z' }, { ...discount, min_subtotal_minor: '999999', starts_at: '2026-01-01T00:00:00.000Z' }]) {
     const result = calculateInvoicePricing({ ...base, discount: candidate });
     assert.equal(result.discount_minor, '0');
     assert.equal(result.tax_minor, '0');
@@ -91,14 +91,14 @@ test('invoice rejects malformed currency, invalid timestamp, overlong amount and
   error(() => calculateInvoicePricing({ ...base, currency: 'US' }), 'VALIDATION_ERROR');
   error(() => calculateInvoicePricing({ ...base, at: '2026-02-30T00:00:00Z' }), 'VALIDATION_ERROR');
   error(() => calculateInvoicePricing({ ...base, lines: [{ ...quote.lines[0], unit_price_minor: '9000000000001' }, quote.lines[1]] }), 'VALIDATION_ERROR');
-  error(() => calculateInvoicePricing({ ...base, discount: { id: ids.discount, scope: 'subscription', kind: 'fixed', amount_minor: '1', currency: 'EUR', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], uses_remaining: 1 } }), 'VALIDATION_ERROR');
+  error(() => calculateInvoicePricing({ ...base, discount: { id: ids.discount, scope: 'subscription', kind: 'fixed', amount_minor: '1', currency: 'EUR', percent_bps: null, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [], max_uses: 1, used_count: 0 } }), 'VALIDATION_ERROR');
 });
 
 test('invoice rejects duplicate source lines and malformed discount mappings or percentages', () => {
   const quote = calculateQuote({ plan, products, variants: [variant], lines, at });
   const base = { currency: 'USD', lines: quote.lines, taxes: new Map(), productTaxRuleIds: new Map(), discount: null, at };
   error(() => calculateInvoicePricing({ ...base, lines: [quote.lines[0], { ...quote.lines[0] }] }), 'VALIDATION_ERROR');
-  const productRule = { id: ids.discount, scope: 'product', kind: 'percentage', amount_minor: null, currency: null, percent_bps: 10001, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [ids.primary], uses_remaining: null };
+  const productRule = { id: ids.discount, scope: 'product', kind: 'percentage', amount_minor: null, currency: null, percent_bps: 10001, min_quantity: 1, min_subtotal_minor: '0', starts_at: '2026-01-01T00:00:00.000Z', ends_at: null, is_active: true, product_ids: [ids.primary], max_uses: null, used_count: 0 };
   error(() => calculateInvoicePricing({ ...base, discount: productRule }), 'VALIDATION_ERROR');
   error(() => calculateInvoicePricing({ ...base, discount: { ...productRule, percent_bps: 1000, product_ids: [] } }), 'VALIDATION_ERROR');
 });

@@ -1,9 +1,9 @@
+import { AppError } from "../../lib/api/errors";
+
 export type CatalogErrorCode = "VALIDATION_ERROR" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_ERROR";
-export class CatalogError extends Error {
-  readonly code: CatalogErrorCode;
+export class CatalogError extends AppError {
   constructor(code: CatalogErrorCode, message: string) {
-    super(message);
+    super(code, message);
     this.name = "CatalogError";
-    this.code = code;
   }
 }
