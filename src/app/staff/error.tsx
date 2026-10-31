@@ -1,0 +1,2 @@
+ 'use client';
+export default function ErrorPage({ reset }: { reset: () => void }) { return <div className="staff-error" role="alert"><h1>We couldn’t load this workspace</h1><p>No changes were made. Please try again or return to the overview.</p><button className="staff-button" onClick={() => reset()}>Try again</button><a className="staff-button secondary" href="/staff/dashboard">Overview</a></div>; }
