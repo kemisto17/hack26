@@ -284,10 +284,10 @@ privileged transaction. They are not an exposed untrusted authorization mechanis
 |---|---|
 | `create_subscription` / D3 | `p_actor_id uuid,p_request_key uuid,p_input jsonb -> jsonb` SubscriptionDTO; verify actor/customer/template/plan, create header/lines or replay original |
 | `mutate_subscription` / D3 | `p_actor_id uuid,p_subscription_id uuid,p_expected_version bigint,p_action text,p_input jsonb -> jsonb`; action enum = draft_update/quotation/revise/confirm/activate/pause/resume/close/renew, input matches HTTP; renew includes request_key; lock row, authorize ownership/plan gates, enforce edge, snapshot and schedule |
-| `generate_next_invoice` / D4 + D3 | `p_subscription_id uuid -> uuid` invoice ID or null when not due; service-job-only callable; lock active due subscription, create unique next period + line snapshots, advance next_billing_at; never authorize from caller period values |
-| `confirm_invoice` / D4 + D2 | `p_actor_id uuid,p_invoice_id uuid,p_expected_version bigint -> jsonb` InvoiceDTO; lock invoice then discount row, reprice tax/discount, validate sums and usage, append redemption and freeze issued snapshot |
+| `generate_next_invoice` / D4 + D3 | `p_subscription_id uuid -> uuid` invoice ID or null when not due; service-job-only callable; lock active due subscription, create unique next period + line snapshots, advance next_billing_at; never authorize from caller period values. Backed by private `generate_next_invoice_locked(p_subscription_id uuid, p_cutoff timestamptz) -> uuid`; D3 close/pause drain while still active before the final state update |
+| `confirm_invoice` / D4 + D2 | `p_actor_id uuid,p_invoice_id uuid,p_expected_version bigint,p_customer_snapshot jsonb -> jsonb` InvoiceDTO; D1-approved additive argument (`p_customer_snapshot` = `{display_name,email}` frozen from D1's staff-only billing contact at confirmation); lock invoice then discount row, reprice tax/discount, validate sums and usage, append redemption and freeze issued snapshot |
 | `cancel_invoice` / D4 | `p_actor_id uuid,p_invoice_id uuid,p_expected_version bigint -> jsonb`; lock invoice, reject payments, preserve period uniqueness |
-| `record_payment` / D4 | `p_actor_id uuid,p_invoice_id uuid,p_expected_version bigint,p_request_key uuid,p_input jsonb -> jsonb`; lock invoice, check duplicate receipt before version, validate currency/balance, append, update paid state |
+| `record_payment` / D4 | `p_actor_id uuid,p_invoice_id uuid,p_expected_version bigint,p_request_key uuid,p_input jsonb,p_request_fingerprint text -> jsonb`; D1-approved additive argument is the SHA-256 `p_request_fingerprint` from D1's `fingerprintRequest`; lock invoice, check duplicate receipt before version, validate currency/balance, append, update paid state |
 
 Billing runner selects due IDs in bounded batches and calls the transactional
 generator. Each transaction rechecks eligibility; concurrent jobs may discover the
@@ -300,9 +300,10 @@ starting at/after it. Auto-close after materializing pending periods. Manual clo
 must materialize earlier due periods up to closed_at in its transaction before
 closing; D3/D4 supply that shared SQL behavior through D1, without cross-module
 TypeScript writes. Paused time is excluded from billing.
-RPCs return DTO JSON with bigint values serialized as strings. Initial migrations
-do not create these RPCs: producers must supply exact payload validators and
-transaction tests before implementation can be integrated.
+RPCs return DTO JSON with bigint values serialized as strings. The D1-owned
+billing migration landed the additive RPC signatures above with producer (D4)
+and pricing (D2) review in progress; producers must still supply exact payload
+validators and transaction tests before implementation can be integrated.
 
 Integration checklist: contract/type names match; customer A cannot access B;
 inactive users fail immediately; staff cannot configure rules or invite staff;
