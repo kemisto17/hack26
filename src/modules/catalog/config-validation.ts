@@ -124,14 +124,10 @@ export function parseCreatePlan(value: unknown): CreatePlanInput {
   return result;
 }
 export function parseUpdatePlan(value: unknown): UpdatePlanInput {
-  const d = object(value, ["product_id", "name", "price_minor", "currency", "billing_interval", "min_quantity", "available_from", "available_until", "auto_close", "allow_close", "allow_pause", "allow_renew", "is_active"]); nonemptyUpdate(d);
-  if (d.billing_interval !== undefined && !["daily", "weekly", "monthly", "yearly"].includes(String(d.billing_interval))) invalid("billing_interval");
+  const d = object(value, ["name", "price_minor", "min_quantity", "available_from", "available_until", "auto_close", "allow_close", "allow_pause", "allow_renew", "is_active"]); nonemptyUpdate(d);
   const result: UpdatePlanInput = {
-    ...(d.product_id !== undefined ? { product_id: uuid(d.product_id, "product_id") } : {}),
     ...(d.name !== undefined ? { name: requiredString(d.name, "name") } : {}),
     ...(d.price_minor !== undefined ? { price_minor: money(d.price_minor, "price_minor") } : {}),
-    ...(d.currency !== undefined ? { currency: currency(d.currency) } : {}),
-    ...(d.billing_interval !== undefined ? { billing_interval: d.billing_interval as PlanDTO["billing_interval"] } : {}),
     ...(d.min_quantity !== undefined ? { min_quantity: integer(d.min_quantity, 1, 1_000_000, "min_quantity") } : {}),
     ...(d.available_from !== undefined ? { available_from: date(d.available_from, "available_from") } : {}),
     ...(d.available_until !== undefined ? { available_until: d.available_until === null ? null : date(d.available_until, "available_until") } : {}),
@@ -207,6 +203,7 @@ function parseDiscountPatch(d: Record<string, unknown>): UpdateDiscountInput {
   if (d.scope !== undefined && !["product", "subscription"].includes(String(d.scope))) invalid("scope");
   const kind = d.kind !== undefined && !["fixed", "percentage"].includes(String(d.kind)) ? invalid("kind") : d.kind as DiscountDTO["kind"] | undefined;
   const productIds = d.product_ids === undefined ? undefined : Array.isArray(d.product_ids) ? d.product_ids.map(id => uuid(id, "product_ids")) : invalid("product_ids");
+  if (productIds && new Set(productIds).size !== productIds.length) invalid("product_ids");
   return { ...(d.code !== undefined ? { code: requiredString(d.code, "code", 50).toUpperCase() } : {}), ...(d.name !== undefined ? { name: requiredString(d.name, "name") } : {}),
     ...(d.scope !== undefined ? { scope: d.scope as DiscountDTO["scope"] } : {}), ...(kind !== undefined ? { kind } : {}),
     ...(d.amount_minor !== undefined ? { amount_minor: d.amount_minor === null ? null : money(d.amount_minor, "amount_minor", MAX_UNIT, true) } : {}), ...(d.currency !== undefined ? { currency: d.currency === null ? null : currency(d.currency) } : {}),

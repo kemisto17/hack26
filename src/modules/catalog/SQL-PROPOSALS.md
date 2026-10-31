@@ -342,7 +342,8 @@ this proposal author.
 
 ## D2 configuration mutation RPC proposal (D1 owns migration and SQL tests)
 
-Status: proposed for D1 review. Existing REST table grants permit service-role
+Status: D1 approved the discount RPC signatures and semantics; migration and SQL
+tests are pending D1 integration. Existing REST table grants permit service-role
 single-row catalog changes after a verified admin check. Discount configuration
 cannot use sequential REST writes because its row and `discount_products` set are
 one logical configuration; plan reference guards also need a database lock so a
@@ -352,6 +353,12 @@ concurrent subscription/template reference cannot race a cadence edit.
 
 `p_input` is an allowlisted normalized `CreateDiscountInput`; `product_ids` is
 part of the JSON payload but is removed before inserting the `discounts` row.
+For updates, omitted keys preserve the stored value; explicit `null` clears only
+nullable columns (`amount_minor`, `currency`, `percent_bps`, `ends_at`, and
+`max_uses`). Null for required fields is invalid. UUIDs in `product_ids` are
+normalized before duplicate detection; duplicate normalized IDs fail validation
+in a deterministic input order. An explicit list replaces the complete mapping
+set, including an empty list only when the resulting scope is subscription.
 The function checks that the active `public.users` row for `p_actor_id` has role
 `admin`, validates the fixed/percentage field combinations and product/subscription
 mapping rules, inserts the discount and all mapped products in one transaction,

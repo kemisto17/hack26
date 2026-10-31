@@ -21,10 +21,11 @@ export type UpdateProductInput = Partial<CreateProductInput>;
 export type CreateVariantInput = Pick<VariantDTO, "product_id" | "name"> & Partial<Pick<VariantDTO, "attributes" | "price_adjustment_minor" | "is_active">>;
 export type UpdateVariantInput = Partial<Omit<CreateVariantInput, "product_id">>;
 export type CreatePlanInput = Pick<PlanDTO, "product_id" | "name" | "price_minor" | "currency" | "billing_interval"> & Partial<Pick<PlanDTO, "min_quantity" | "available_from" | "available_until" | "auto_close" | "allow_close" | "allow_pause" | "allow_renew" | "is_active">>;
-export type UpdatePlanInput = Partial<Omit<CreatePlanInput, "product_id" | "currency" | "billing_interval">> & Partial<Pick<PlanDTO, "product_id" | "currency" | "billing_interval">>;
+export type UpdatePlanInput = Partial<Omit<CreatePlanInput, "product_id" | "currency" | "billing_interval">>;
 export type CreateTaxRuleInput = Pick<TaxRuleDTO, "name" | "rate_bps" | "starts_on"> & Partial<Pick<TaxRuleDTO, "ends_on" | "is_active">>;
 export type UpdateTaxRuleInput = Partial<CreateTaxRuleInput>;
 export type CreateDiscountInput = Omit<Pick<DiscountDTO, "code" | "name" | "scope" | "kind" | "starts_at">, "id"> & Partial<Pick<DiscountDTO, "amount_minor" | "currency" | "percent_bps" | "min_quantity" | "min_subtotal_minor" | "ends_at" | "max_uses" | "is_active" | "product_ids">>;
+/** PATCH semantics: omitted keys preserve stored values; explicit null clears nullable fields. */
 export type UpdateDiscountInput = Partial<CreateDiscountInput>;
 export type LineSelection = { product_id: UUID; variant_id?: UUID; quantity: number; is_primary: boolean };
 export type PricedLine = LineSelection & { id: UUID; description: string; variant_label: string | null; unit_price_minor: Minor };

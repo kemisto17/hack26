@@ -367,23 +367,10 @@ export async function createPlan(actor: Actor, input: CreatePlanInput): Promise<
   const result = await client.from("plans").insert(write).select(planFields).single(); if (result.error) databaseError(result.error); return planDTO(result.data);
 }
 export async function updatePlan(actor: Actor, id: string, input: UpdatePlanInput & { expected_version: string }): Promise<PlanDTO> {
-  await adminActor(actor); const data = strictObject(input, ["product_id", "name", "price_minor", "currency", "billing_interval", "min_quantity", "available_from", "available_until", "auto_close", "allow_close", "allow_pause", "allow_renew", "is_active", "expected_version"]); const expected = parseExpected(data); const values = parseUpdatePlan(Object.fromEntries(Object.entries(data).filter(([key]) => key !== "expected_version"))); const target = parseUuid(id); const client = createAdminClient();
+  await adminActor(actor); const data = strictObject(input, ["name", "price_minor", "min_quantity", "available_from", "available_until", "auto_close", "allow_close", "allow_pause", "allow_renew", "is_active", "expected_version"]); const expected = parseExpected(data); const values = parseUpdatePlan(Object.fromEntries(Object.entries(data).filter(([key]) => key !== "expected_version"))); const target = parseUuid(id); const client = createAdminClient();
   const existing = await client.from("plans").select(planFields).eq("id", target).maybeSingle(); if (existing.error) databaseError(existing.error); const old = requireRow(existing.data, "Plan not found.");
   const merged = { ...planDTO(old), ...values };
   validatePlanResult(merged);
-  if (values.product_id !== undefined || values.currency !== undefined || values.billing_interval !== undefined) {
-    const [subscriptions, templates] = await Promise.all([
-      client.from("subscriptions").select("id").eq("plan_id", target).limit(1),
-      client.from("quotation_templates").select("id").eq("plan_id", target).limit(1),
-    ]);
-    if (subscriptions.error) databaseError(subscriptions.error); if (templates.error) databaseError(templates.error);
-    if ((subscriptions.data?.length ?? 0) > 0 || (templates.data?.length ?? 0) > 0) throw new AppError("INVALID_TRANSITION", "Referenced plans cannot change product, currency or billing interval; create a new plan.");
-  }
-  if (values.product_id || values.currency) {
-    const productId = values.product_id ?? old.product_id; const productResult = await client.from("products").select("currency,is_active").eq("id", productId).maybeSingle();
-    if (productResult.error) databaseError(productResult.error); if (!productResult.data?.is_active) throw new AppError("NOT_FOUND", "Active product not found.");
-    if (productResult.data.currency !== (values.currency ?? old.currency)) throw new AppError("VALIDATION_ERROR", "Plan currency must match its product.");
-  }
   const write = { ...values, ...(values.price_minor !== undefined ? { price_minor: Number(values.price_minor) } : {}) } as Database["public"]["Tables"]["plans"]["Update"];
   const result = await client.from("plans").update(write).eq("id", target).eq("version", expected as unknown as number).select(planFields).maybeSingle(); if (result.error) databaseError(result.error); if (!result.data) throw new AppError("VERSION_CONFLICT", "This plan changed. Refresh and try again."); return planDTO(result.data);
 }

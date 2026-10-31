@@ -31,7 +31,10 @@ describe("catalog configuration input validation", () => {
 
   it("validates plan choices, integer limits and inclusive availability ranges", () => {
     expect(parseCreatePlan({ product_id: id, name: "Monthly", price_minor: "500", currency: "USD", billing_interval: "monthly", min_quantity: 3 })).toMatchObject({ min_quantity: 3 });
-    expect(parseUpdatePlan({ product_id: id, currency: "EUR" })).toEqual({ product_id: id, currency: "EUR" });
+    expect(parseUpdatePlan({ name: "Annual Plus" })).toEqual({ name: "Annual Plus" });
+    errorCode(() => parseUpdatePlan({ product_id: id }), "VALIDATION_ERROR");
+    errorCode(() => parseUpdatePlan({ currency: "EUR" }), "VALIDATION_ERROR");
+    errorCode(() => parseUpdatePlan({ billing_interval: "yearly" }), "VALIDATION_ERROR");
     errorCode(() => parseCreatePlan({ product_id: id, name: "Bad", price_minor: "1", currency: "USD", billing_interval: "hourly" }), "VALIDATION_ERROR");
     errorCode(() => parseCreatePlan({ product_id: id, name: "Bad", price_minor: "1", currency: "USD", billing_interval: "daily", available_from: "2026-02-30", available_until: "2026-03-01" }), "VALIDATION_ERROR");
     errorCode(() => parseCreatePlan({ product_id: id, name: "Bad", price_minor: "1", currency: "USD", billing_interval: "daily", available_from: "2026-05-01", available_until: "2026-04-30" }), "VALIDATION_ERROR");
@@ -49,6 +52,7 @@ describe("catalog configuration input validation", () => {
     const fixed = parseCreateDiscount({ code: "fixed", name: "Fixed", scope: "subscription", kind: "fixed", amount_minor: "25", currency: "USD", starts_at: "2026-01-01T00:00:00Z" });
     expect(fixed).toMatchObject({ amount_minor: "25", currency: "USD", product_ids: [] });
     expect(parseUpdateDiscount({ ends_at: null, is_active: false })).toEqual({ ends_at: null, is_active: false });
+    errorCode(() => parseUpdateDiscount({ product_ids: [id, id] }), "VALIDATION_ERROR");
     errorCode(() => parseCreateDiscount({ ...validDiscount, product_ids: [] }), "VALIDATION_ERROR");
     errorCode(() => parseCreateDiscount({ ...validDiscount, ends_at: "2025-12-31T23:59:59Z" }), "VALIDATION_ERROR");
     errorCode(() => parseCreateDiscount({ ...validDiscount, percent_bps: 0 }), "VALIDATION_ERROR");
