@@ -132,7 +132,7 @@ match the proposed SQL parameters.
    bypass authorization or call a missing RPC.
 8. **Run the real local Supabase flow** and record the observed results.
 
-## 4. Planned route/page map (not mounted yet)
+## 4. Planned route/page map (API routes unmounted)
 
 All API routes live under `/api/v1`. Every mutation must validate Origin, session,
 `If-Match`, input and ownership server-side through D1 helpers and the service.
@@ -172,6 +172,23 @@ No code path sets `sent_at`; printing never issues a draft.
 
 `InvoiceDetail` ignores staff callbacks when `role === "customer"`; the service and
 SQL remain authoritative. Hiding a link is not authorization.
+
+### Portal page shells landed by the customer-web commit
+
+`origin/main` `38cddf1` (customer website workstream) already created the three
+portal page files above, plus `src/components/customer-web/**`. They verify the
+customer through D1 `requireActor`/`getMe` and render an explicit unavailable
+state: `customerCollection`/`customerDetail` return `{state:"unavailable"}` and
+never substitute mock rows, zero totals or direct table reads. The dblink of
+D3/D4 DTO types is display-only, so nothing claims a live endpoint.
+
+D4 must therefore **not** create duplicate page files. When D1's composition
+lands, replace only the unavailable branch of that boundary with the reviewed
+request-scoped read binding:
+`readInvoices`/`readInvoice`/`readPayments` (or an RPC-backed equivalent) for the
+same actor, keeping keySet cursor, ownership and no-store rules. Do not add
+client-side direct Supabase reads or invent REST endpoints to shortcut it.
+The staff pages under `(workspace)` and all ten API routes remain unmounted.
 
 Runner wiring after D1 lands:
 
