@@ -2,7 +2,7 @@ import "server-only";
 import type { Actor, InvoiceContext, InvoicePricingDTO, InvoicePricingInput, PriceQuoteDTO, PriceQuoteInput, QuoteContext } from "./contracts";
 import { CatalogError } from "./errors";
 import { priceInvoice as priceInvoiceDomain, priceQuote as priceQuoteDomain } from "./domain";
-import { parseInvoicePricing, parsePriceQuote } from "./validation";
+import { parseInvoicePricing, parsePriceQuote, uuid } from "./validation";
 
 /** Request-scoped data/auth bindings. No client, credential or actor is global. */
 export type CatalogBindings = {
@@ -37,7 +37,7 @@ export function bindCatalogServices(bindings: CatalogBindings) {
       const verified = await bindings.requireActor(); verifyActor(verified, actor);
       if (verified.role === "customer") throw new CatalogError("FORBIDDEN", "Invoice pricing preview requires staff access.");
       if (!bindings.readInvoiceLines) throw new CatalogError("INTERNAL_ERROR", "Invoice pricing binding is unavailable.");
-      const data = await bindings.readInvoiceLines(verified, invoiceId);
+      const data = await bindings.readInvoiceLines(verified, uuid(invoiceId));
       const contextInput: InvoicePricingInput = { ...data, at };
       const parsed = parseInvoicePricing(contextInput);
       const context = await bindings.readInvoiceContext(verified, parsed);

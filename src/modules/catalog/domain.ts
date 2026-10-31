@@ -1,8 +1,5 @@
 import type { InvoiceContext, InvoicePricedLine, InvoicePricingDTO, InvoicePricingInput, PricingDiscount, PriceQuoteDTO, PriceQuoteInput, QuoteContext, TaxRule } from "./contracts";
-class CatalogError extends Error {
-  readonly code: "INTERNAL_ERROR" | "VALIDATION_ERROR" | "NOT_FOUND";
-  constructor(code: "INTERNAL_ERROR" | "VALIDATION_ERROR" | "NOT_FOUND", message: string) { super(message); this.code = code; }
-}
+import { CatalogError } from "./errors";
 
 const MAX_UNIT = BigInt("9000000000000");
 const MAX_TOTAL = BigInt("9000000000000000");
@@ -25,7 +22,7 @@ export function priceQuote(input: PriceQuoteInput, context: QuoteContext): Price
   const products = new Map(context.products.map(p => [p.id, p]));
   const variants = new Map(context.variants.map(v => [v.id, v]));
   let subtotal = BigInt(0);
-  const lines = input.lines.map((selection, index) => {
+  const lines = input.lines.map(selection => {
     const product = products.get(selection.product_id);
     if (!product || !product.is_active) throw new CatalogError("NOT_FOUND", "Product not found.");
     if (product.currency !== plan.currency) fail("Product and plan currencies must match.");
@@ -36,7 +33,7 @@ export function priceQuote(input: PriceQuoteInput, context: QuoteContext): Price
     const unit = base + (variant ? BigInt(variant.price_adjustment_minor) : BigInt(0));
     if (unit < BigInt(0) || unit > MAX_UNIT) fail("Adjusted unit price is outside the supported range.");
     subtotal = checkTotal(subtotal + unit * BigInt(selection.quantity));
-    return { ...selection, id: `${index + 1}`, description: product.name, variant_label: variant?.name ?? null, unit_price_minor: unit.toString() };
+    return { ...selection, description: product.name, variant_label: variant?.name ?? null, unit_price_minor: unit.toString() };
   });
   return { currency: plan.currency, lines, subtotal_minor: subtotal.toString() };
 }
@@ -48,10 +45,13 @@ function eligible(discount: PricingDiscount, input: InvoicePricingInput, currenc
 
 function calculateDiscount(discount: PricingDiscount | null, input: InvoicePricingInput, subtotal: bigint, lines: InvoicePricingInput["lines"]): { total: bigint; allocations: bigint[] } {
   const zero = lines.map(() => BigInt(0));
-  if (!discount || !eligible(discount, input, input.currency, subtotal, lines.reduce((n, l) => n + l.quantity, 0))) return { total: BigInt(0), allocations: zero };
-  const scope = lines.map((line, index) => discount.product_ids.length === 0 || discount.product_ids.includes(line.product_id) ? index : -1).filter(index => index >= 0);
+  if (!discount) return { total: BigInt(0), allocations: zero };
+  const scope = lines.map((line, index) => discount.scope === "subscription" || discount.product_ids.includes(line.product_id) ? index : -1).filter(index => index >= 0);
   if (scope.length === 0) return { total: BigInt(0), allocations: zero };
   const eligibleSubtotal = scope.reduce((sum, i) => sum + BigInt(lines[i]!.unit_price_minor) * BigInt(lines[i]!.quantity), BigInt(0));
+  const eligibleQuantity = scope.reduce((sum, i) => sum + lines[i]!.quantity, 0);
+  if (!eligible(discount, input, input.currency, eligibleSubtotal, eligibleQuantity)) return { total: BigInt(0), allocations: zero };
+  if (discount.max_uses !== null && discount.used_count >= discount.max_uses) return { total: BigInt(0), allocations: zero };
   if (eligibleSubtotal === BigInt(0)) return { total: BigInt(0), allocations: zero };
   const total = discount.kind === "fixed"
     ? (discount.currency === input.currency ? BigInt(discount.amount_minor ?? "0") : BigInt(0))
@@ -66,7 +66,7 @@ function calculateDiscount(discount: PricingDiscount | null, input: InvoicePrici
     assigned += allocations[i]!;
   }
   let remainder = capped - assigned;
-  for (const i of scope.slice().sort((a, b) => lines[a]!.id.localeCompare(lines[b]!.id))) {
+  for (const i of scope.slice().sort((a, b) => lines[a]!.id < lines[b]!.id ? -1 : lines[a]!.id > lines[b]!.id ? 1 : 0)) {
     if (remainder === BigInt(0)) break;
     const capacity = BigInt(lines[i]!.unit_price_minor) * BigInt(lines[i]!.quantity) - allocations[i]!;
     const cents = capacity < remainder ? capacity : remainder;

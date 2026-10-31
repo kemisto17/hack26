@@ -26,10 +26,10 @@ mapping against the invoice period and current rule data. Confirmation therefore
 rechecks tax, mapping and discount eligibility; it never reads current plan price
 or rewrites the invoice line's historical commercial snapshots.
 
-Discount quantity minimum is checked against the total invoice quantity;
-product-scoped eligible subtotal/quantity are limited to mapped products. A
-product-scoped discount with no mappings is ineligible. Subscription-scope rules
-use all lines. Date windows use `starts_at <= transaction time < ends_at`.
+Discount minimum quantity and subtotal are checked against the eligible scope:
+mapped products for product-scoped discounts, all invoice lines for
+subscription-scoped discounts. A product-scoped discount with no mappings is
+ineligible. Date windows use `starts_at <= transaction time < ends_at`.
 Active/date/currency/minimum/scope ineligibility means zero discount. Percentage
 discounts round once on eligible subtotal; fixed discount is capped at that
 subtotal. Allocate proportional integer floors, then distribute remainder cents

@@ -1,7 +1,4 @@
-class CatalogError extends Error {
-  readonly code = "VALIDATION_ERROR";
-  constructor(code: string, message: string) { super(`${message} ${code}`); }
-}
+import { CatalogError } from "./errors";
 import type { InvoicePricingInput, LineSelection, PriceQuoteInput, PricedLine } from "./contracts";
 
 function invalid(field: string): never { throw new CatalogError("VALIDATION_ERROR", `Invalid ${field}.`); }
