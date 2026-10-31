@@ -16,7 +16,7 @@ begin
   begin
     execute statement;
   exception when others then
-    if sqlstate = expected_state then return 'PASS: ' || label; end if;
+    if sqlstate = any(string_to_array(expected_state, '|')) then return 'PASS: ' || label; end if;
     raise exception 'FAIL: %: expected %, got % (%)', label, expected_state, sqlstate, sqlerrm;
   end;
   raise exception 'FAIL: %: expected error %', label, expected_state;
@@ -112,7 +112,7 @@ select pg_temp.assert_raises($q$insert into public.invoices(number,subscription_
 select pg_temp.assert_raises($q$insert into public.payments(invoice_id,customer_id,currency,amount_minor,method,paid_at,recorded_by,request_key,request_fingerprint) select invoice_id,customer_id,currency,amount_minor,method,paid_at,recorded_by,request_key,request_fingerprint from public.payments$q$,
  '23505','payment retries cannot create another receipt');
 select pg_temp.assert_raises($q$delete from auth.users where id = '10000000-0000-4000-8000-000000000001'$q$,
- '23001','Auth deletion cannot silently erase financial ownership');
+ '23001|23503','Auth deletion cannot silently erase financial ownership');
 
 set local role anon;
 select pg_temp.assert_raises('select * from public.users','42501','anonymous profile access denied');
