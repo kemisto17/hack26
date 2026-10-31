@@ -1,0 +1,14 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { beforeEach, expect, it, vi } from 'vitest';
+vi.stubGlobal('React', React);
+const m=vi.hoisted(()=>({guard:vi.fn(),products:vi.fn(),plans:vi.fn(),variants:vi.fn(),product:vi.fn()}));
+vi.mock('@/components/staff-console/session',()=>({requireStaff:m.guard}));
+vi.mock('@/modules/catalog/service',()=>({listProducts:m.products,listPlans:m.plans,listVariants:m.variants,getProduct:m.product}));
+import { Catalog, CatalogDetail } from '@/components/staff-console/catalog';
+const product={id:'fixture',name:'Actual seeded product',product_type:'software',sales_price_minor:'12500',currency:'INR',is_active:true};
+beforeEach(()=>{vi.clearAllMocks();m.guard.mockResolvedValue({id:'staff',role:'internal'});m.products.mockResolvedValue({items:[product],next_cursor:null});m.product.mockResolvedValue(product);m.plans.mockResolvedValue({items:[]});m.variants.mockResolvedValue({items:[]});});
+it('renders service records and product detail links',async()=>{const html=renderToStaticMarkup(await Catalog());expect(html).toContain(product.name);expect(html).toContain('/staff/catalog/fixture');expect(html).not.toContain('not been integrated');});
+it('does not fetch records if role authorization fails',async()=>{m.guard.mockRejectedValue(new Error('forbidden'));await expect(Catalog()).rejects.toThrow('forbidden');expect(m.products).not.toHaveBeenCalled();});
+it('filters unrelated plans from the product details',async()=>{m.plans.mockResolvedValue({items:[{id:'other',product_id:'other',name:'Unrelated plan'}]});const html=renderToStaticMarkup(await CatalogDetail({id:'fixture'}));expect(html).toContain(product.name);expect(html).not.toContain('Unrelated plan');expect(m.product).toHaveBeenCalledWith({id:'staff',role:'internal'},'fixture');});
+it('surfaces database failure instead of fake empty records',async()=>{m.products.mockRejectedValue(new Error('database unavailable'));await expect(Catalog()).rejects.toThrow('database unavailable');});

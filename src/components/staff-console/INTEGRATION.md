@@ -197,3 +197,11 @@ ProfileForm and SignOut are reused unchanged.
 - `tests/staff-console/routes.mjs`
 - `tests/staff-console/session.test.ts`
 - `tests/staff-console/shell.test.ts`
+
+## Live catalog follow-up (2026-10-31)
+
+The user authorized connecting the seeded database to the existing website. Staff catalog list/detail now consume D2's public service exports with current-role authorization. Customer navigation links to D2's existing `/portal/catalog`; admin already consumes the live catalog. No domain modules, migrations or API contracts changed.
+
+Authenticated HTTP verification returned 200 and a real stored product name on `/admin/catalog`, `/staff/catalog`, and `/portal/catalog`. Database inspection found 8 users, 15 products and 13 plans, with zero subscriptions, invoices and payments. This does not claim operational adapters or mutations are connected. List/detail UI explicitly identifies the 100-record batch limit.
+
+Local configuration uses the existing server key under the app's required `SUPABASE_SECRET_KEY` name and restores `APP_ORIGIN=http://localhost:3000`. Credentials remain only in ignored `.env.local` and are not committed.

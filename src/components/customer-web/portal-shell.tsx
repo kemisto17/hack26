@@ -11,7 +11,7 @@ export const portalLinks: {
     href: string;
     icon: IconName;
 }[] = [
-    { label: "Overview", href: "/portal/dashboard", icon: "grid" }, { label: "My subscriptions", href: "/portal/subscriptions", icon: "repeat" }, { label: "Quotations", href: "/portal/quotations", icon: "document" }, { label: "Invoices", href: "/portal/invoices", icon: "layers" }, { label: "Payments", href: "/portal/payments", icon: "wallet" }, { label: "Help & support", href: "/portal/support", icon: "help" }, { label: "Profile & settings", href: "/portal/profile", icon: "settings" },
+    { label: "Overview", href: "/portal/dashboard", icon: "grid" }, { label: "Browse plans", href: "/portal/catalog", icon: "layers" }, { label: "My subscriptions", href: "/portal/subscriptions", icon: "repeat" }, { label: "Quotations", href: "/portal/quotations", icon: "document" }, { label: "Invoices", href: "/portal/invoices", icon: "layers" }, { label: "Payments", href: "/portal/payments", icon: "wallet" }, { label: "Help & support", href: "/portal/support", icon: "help" }, { label: "Profile & settings", href: "/portal/profile", icon: "settings" },
 ];
 export function PortalShell({ user, children }: {
     user: UserDTO;
