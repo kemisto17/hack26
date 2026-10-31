@@ -7,7 +7,8 @@ export type PricedLine = LineSelection & { id: UUID; description: string; varian
 export type QuotePricedLine = LineSelection & { description: string; variant_label: string | null; unit_price_minor: Minor };
 export type PriceQuoteInput = { plan_id: UUID; lines: LineSelection[]; at: string };
 export type PriceQuoteDTO = { currency: string; lines: QuotePricedLine[]; subtotal_minor: Minor };
-export type InvoicePricingInput = { currency: string; lines: PricedLine[]; discount_id: UUID | null; at: string };
+/** Non-authoritative preview: period_start selects the tax date; at evaluates discount windows. */
+export type InvoicePricingInput = { currency: string; lines: PricedLine[]; discount_id: UUID | null; period_start: string; at: string };
 export type InvoicePricedLine = PricedLine & { discount_minor: Minor; tax_rule_id: UUID | null; tax_rate_bps: number; tax_minor: Minor; amount_minor: Minor };
 export type InvoicePricingDTO = { lines: InvoicePricedLine[]; subtotal_minor: Minor; discount_minor: Minor; tax_minor: Minor; total_minor: Minor };
 

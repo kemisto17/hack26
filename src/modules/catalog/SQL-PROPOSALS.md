@@ -19,6 +19,15 @@ Product tax is effective when `starts_on <= invoice.period_start UTC date` and
 expired rule yields no tax. Historical line unit prices/descriptions are never
 rewritten.
 
+The TypeScript preview contract carries two independent UTC instants:
+`period_start` selects the tax effective date exactly as above; `at` is the
+server pricing instant for discount windows. For draft preview, invoice id is the
+only caller resource input; currency, period_start and frozen lines come from
+the authoritative invoice read, and `at` comes from the server clock. Current
+discount `used_count` comes from the current redemption ledger count. A preview
+is advisory and is never persisted as a reservation; SQL confirmation rechecks
+all values under the transaction locks.
+
 Draft invoice lines preserve the prices, descriptions, labels and quantities
 copied by generation. They are not a tax/discount reservation: preview and
 confirmation resolve the current product tax assignment and current discount
@@ -316,6 +325,9 @@ this proposal author.
    assignment; starts_on is inclusive,
    ends_on is inclusive, inactive/expired/not-yet-effective rules yield zero;
    unit prices and descriptions remain identical after repricing.
+   Include a period_start immediately before UTC midnight with `at` after
+   midnight and a tax starts_on boundary: tax follows the UTC period_start date
+   while discount windows follow `at`.
 5. Discount minimum subtotal/quantity, currency mismatch, inactive/date windows,
    product mapping and empty product mapping produce zero; product-scoped
    discounts affect mapped lines only; subscription scope affects all lines.

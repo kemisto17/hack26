@@ -11,7 +11,7 @@ const quote = () => priceQuote({plan_id:ids.plan,lines:selections,at:"2026-10-31
 const invoiceLines = () => quote().lines.map((line,index)=>({...line,id:index===0?ids.line1:ids.line2}));
 const disc = (overrides: Partial<PricingDiscount> = {}): PricingDiscount => ({id:ids.discount,scope:"subscription",kind:"percentage",amount_minor:null,currency:null,percent_bps:3333,min_quantity:1,min_subtotal_minor:"0",starts_at:"2026-01-01T00:00:00Z",ends_at:null,max_uses:null,used_count:0,is_active:true,product_ids:[],...overrides});
 const invoiceContext = (discount: PricingDiscount | null = disc()) => ({products:quoteContext().products,taxes:[{id:ids.tax,name:"VAT",rate_bps:500,starts_on:"2026-01-01",ends_on:"2026-10-30",is_active:true}],discount});
-const invoiceInput = (overrides: Partial<InvoicePricingInput> = {}): InvoicePricingInput => ({currency:"USD",lines:invoiceLines(),discount_id:ids.discount,at:"2026-10-31T00:00:00Z",...overrides});
+const invoiceInput = (overrides: Partial<InvoicePricingInput> = {}): InvoicePricingInput => ({currency:"USD",lines:invoiceLines(),discount_id:ids.discount,period_start:"2026-10-31T00:00:00Z",at:"2026-10-31T00:00:00Z",...overrides});
 
 describe("catalog pricing domain",()=>{
  it("prices primary from plan, verifies variants/minimum and omits private catalog fields and fake ids",()=>{
@@ -29,6 +29,15 @@ describe("catalog pricing domain",()=>{
  it("uses integer half-up tax rounding and omits expired tax rules",()=>{
   expect(roundBps(BigInt(1),5000)).toBe(BigInt(1)); expect(roundBps(BigInt(3),5000)).toBe(BigInt(2));
   const result=priceInvoice(invoiceInput({discount_id:null}),invoiceContext(null)); expect(result.lines[0]?.tax_minor).toBe("0"); expect(result.lines[0]?.tax_rule_id).toBeNull();
+ });
+ it("uses invoice period_start UTC date for tax and current at for discount windows",()=>{
+  const taxRule={id:ids.tax,name:"VAT change",rate_bps:1000,starts_on:"2026-01-02",ends_on:null,is_active:true};
+  const discount=disc({kind:"fixed",amount_minor:"10",currency:"USD",percent_bps:null,starts_at:"2026-01-02T00:00:00Z"});
+  const context={products:quoteContext().products,taxes:[taxRule],discount};
+  const beforeBoundary=priceInvoice(invoiceInput({period_start:"2026-01-01T23:59:59.999Z",at:"2026-01-02T00:30:00Z"}),context);
+  expect(beforeBoundary.lines[0]?.tax_rule_id).toBeNull(); expect(beforeBoundary.discount_minor).toBe("10");
+  const atUtcBoundary=priceInvoice(invoiceInput({period_start:"2026-01-02T00:00:00Z",at:"2026-01-02T00:30:00Z"}),context);
+  expect(atUtcBoundary.lines[0]?.tax_rule_id).toBe(ids.tax); expect(atUtcBoundary.lines[0]?.tax_rate_bps).toBe(1000);
  });
  it("caps fixed discounts and allocates remainder in canonical UUID byte order",()=>{
   const lines=invoiceLines().reverse();

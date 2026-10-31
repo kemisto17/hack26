@@ -86,7 +86,7 @@ export function priceInvoice(input: InvoicePricingInput, context: InvoiceContext
   const lines: InvoicePricedLine[] = input.lines.map((line, index) => {
     const product = products.get(line.product_id);
     const candidate = product?.tax_rule_id ? taxMap.get(product.tax_rule_id) : undefined;
-    const tax = candidate && dateActive(candidate, input.at) ? candidate : undefined;
+    const tax = candidate && dateActive(candidate, input.period_start) ? candidate : undefined;
     if (!product) throw new CatalogError("NOT_FOUND", "Invoice product not found.");
     const rate = tax?.rate_bps ?? 0;
     const taxable = BigInt(line.unit_price_minor) * BigInt(line.quantity) - discount.allocations[index]!;

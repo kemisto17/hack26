@@ -9,7 +9,9 @@ export type CatalogBindings = {
   requireActor(): Promise<Actor>;
   readQuoteContext(actor: Actor, planId: string, lines: PriceQuoteInput["lines"], at: string): Promise<QuoteContext>;
   readInvoiceContext(actor: Actor, input: InvoicePricingInput): Promise<InvoiceContext>;
-  readInvoiceLines?(actor: Actor, invoiceId: string): Promise<{ currency: string; lines: InvoicePricingInput["lines"]; discount_id: string | null }>;
+  /** Authoritative invoice header and frozen lines; discount usage comes from the current redemption count. */
+  readInvoiceLines?(actor: Actor, invoiceId: string): Promise<{ currency: string; period_start: string; lines: InvoicePricingInput["lines"]; discount_id: string | null }>;
+  currentInstant(): string;
 };
 function verifyActor(current: Actor, supplied: Actor): void {
   if (current.id !== supplied.id) throw new CatalogError("FORBIDDEN", "Session actor mismatch.");
@@ -33,12 +35,12 @@ export function bindCatalogServices(bindings: CatalogBindings) {
       const context = await bindings.readInvoiceContext(verified, parsed);
       return invoiceDTO(priceInvoiceDomain(parsed, context));
     },
-    async priceInvoiceDraft(actor: Actor, invoiceId: string, at: string): Promise<InvoicePricingDTO> {
+    async priceInvoiceDraft(actor: Actor, invoiceId: string): Promise<InvoicePricingDTO> {
       const verified = await bindings.requireActor(); verifyActor(verified, actor);
       if (verified.role === "customer") throw new CatalogError("FORBIDDEN", "Invoice pricing preview requires staff access.");
       if (!bindings.readInvoiceLines) throw new CatalogError("INTERNAL_ERROR", "Invoice pricing binding is unavailable.");
       const data = await bindings.readInvoiceLines(verified, uuid(invoiceId));
-      const contextInput: InvoicePricingInput = { ...data, at };
+      const contextInput: InvoicePricingInput = { ...data, at: bindings.currentInstant() };
       const parsed = parseInvoicePricing(contextInput);
       const context = await bindings.readInvoiceContext(verified, parsed);
       return invoiceDTO(priceInvoiceDomain(parsed, context));
