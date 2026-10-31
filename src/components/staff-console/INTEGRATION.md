@@ -100,8 +100,11 @@ Do not enable disabled controls before these conditions have been verified.
 - Reports do not add currencies together or draw sample charts.
 - Issuer legal/business details are not in the invoice contract. The preview says
   they are unconfigured, rather than inventing business identity information.
-- Customer portal, Auth redirect behavior and staff root landing are unchanged.
-  Access the console directly at `/staff`; the old staff landing remains intact.
+- Customer portal and Auth implementation are unchanged. A follow-up landing fix
+  redirects verified internal staff from `/` to `/staff/dashboard`; administrators
+  retain their existing root account/access management page. This shared frontend
+  change is authorized by the user report that staff login did not open the console.
+  Verified with the real development staff login, root redirect and dashboard response.
 
 ## Verification
 

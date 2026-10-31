@@ -12,7 +12,11 @@ export default function Home({ searchParams }: { searchParams: Promise<Record<st
   return <Suspense fallback={<MarketingHome/>}><HomeEntry searchParams={searchParams} /></Suspense>;
 }
 async function HomeEntry({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  try { const actor = await requireActor(); if (actor.role === 'customer') redirect('/portal/dashboard'); }
+  try {
+    const actor = await requireActor();
+    if (actor.role === 'customer') redirect('/portal/dashboard');
+    if (actor.role === 'internal') redirect('/staff/dashboard');
+  }
   catch(error) { if(error instanceof AppError && ['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) return <MarketingHome/>; throw error; }
   return <Workspace searchParams={searchParams}/>;
 }
