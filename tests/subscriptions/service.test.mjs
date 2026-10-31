@@ -81,6 +81,17 @@ test('invalid inputs fail before transactional bindings', async () => {
   for (const query of [{ limit: 101 }, { limit: 0 }, { status: 'bad' }, { status: '' }, { customer_id: '' }, { cursor: '' }]) await rejects(() => service.listSubscriptions(staff, query), 'VALIDATION_ERROR');
   assert.equal(calls.length, 0);
 });
+test('lifecycle mutations reject unexpected fields before dispatch for staff and owners', async () => {
+  for (const actor of [staff, owner]) {
+    const { service, calls } = fixture(actor);
+    await rejects(() => service.pauseSubscription(actor, other, { expected_version: '2', status: 'active' }), 'VALIDATION_ERROR');
+    await rejects(() => service.closeSubscription(actor, other, { expected_version: '2', customer_id: id }), 'VALIDATION_ERROR');
+    assert.equal(calls.length, 0);
+  }
+  const { service, calls } = fixture();
+  await rejects(() => service.confirmSubscription(staff, other, { expected_version: '2', unit_price_minor: '1' }), 'VALIDATION_ERROR');
+  assert.equal(calls.length, 0);
+});
 test('create retry forwards stable original input without resolving mutable template or pricing defaults', async () => {
   const { service, calls } = fixture(staff, { readTemplate: async () => { throw new Error('Must not resolve defaults before idempotency lookup'); } });
   const request = { ...input, template_id: other }; delete request.lines;
