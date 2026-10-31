@@ -130,18 +130,29 @@ variant adjustments and names; omit costs, internal notes, discount codes and
 inactive records. Staff GET `/customers` is D1-owned identity directory, returning
 paginated UserDTOs where role=customer; no raw Auth email directory.
 
-For each resource below, GET `/<resource>` and GET `/<resource>/:id` return safe
-paginated DTOs/single DTO; POST `/<resource>` creates; PATCH `/<resource>/:id`
-updates with If-Match (same fields optional, at least one). Retire via is_active;
-no DELETE route. Dates/currency and complete resulting object are revalidated.
+For products, variants, plans and tax rules, GET `/<resource>` and GET
+`/<resource>/:id` return safe paginated DTOs/single DTO; POST creates; PATCH
+`/<resource>/:id` updates with If-Match (same fields optional, at least one).
+Retire via is_active; no DELETE route. Dates/currency and complete resulting
+object are revalidated. Discounts currently have GET list/detail only. Their
+create/update operations require D1's transaction RPC and are not exposed until
+that migration is integrated.
 
 | Resource | Create fields (optional `?`, defaults from schema) |
 |---|---|
 | `products` | `name,product_type,sales_price_minor,cost_price_minor,currency,notes?,tax_rule_id?,is_active?` |
 | `variants` | `product_id,name,attributes?,price_adjustment_minor?,is_active?`; product_id immutable |
-| `plans` | `product_id,name,price_minor,currency,billing_interval,min_quantity?,available_from?,available_until?,auto_close?,allow_close?,allow_pause?,allow_renew?,is_active?`; product_id/currency/billing_interval immutable once referenced; use a new plan for a new cadence |
+| `plans` | `product_id,name,price_minor,currency,billing_interval,min_quantity?,available_from?,available_until?,auto_close?,allow_close?,allow_pause?,allow_renew?,is_active?`; PATCH may update name, price, availability and policy flags only. `product_id`, `currency`, and `billing_interval` cannot be changed; create a new plan for a new product/currency/cadence. This avoids a race with subscription/template creation until D1 and D3 provide the shared plan lock. |
 | `tax-rules` | `name,rate_bps,starts_on,ends_on?,is_active?` |
 | `discounts` | `code,name,scope,kind,amount_minor?,currency?,percent_bps?,min_quantity?,min_subtotal_minor?,starts_at,ends_at?,max_uses?,product_ids?,is_active?` |
+
+Discount update RPC input uses merge-patch semantics: omitted keys preserve the
+stored value; explicit `null` clears nullable fields (`amount_minor`, `currency`,
+`percent_bps`, `ends_at`, or `max_uses`) and is rejected for required fields.
+Explicit `product_ids` replaces the whole mapping set; duplicate IDs are rejected
+deterministically after UUID normalization, and an empty set is valid only for
+subscription scope. The complete merged rule is validated atomically. These are
+the proposed D1 RPC semantics, not an available HTTP mutation endpoint yet.
 
 Staff configuration DTOs expose those fields plus id/version/timestamps. Customer
 CatalogDTO includes only `{products:[{id,name,product_type,sales_price_minor,
@@ -153,16 +164,20 @@ uses pagination on plans; include only products/variants needed for that page.
 Types exported by `src/modules/catalog/contracts.ts`:
 
 - `LineSelection = {product_id:UUID, variant_id?:UUID, quantity:number, is_primary:boolean}`.
-- `QuotePricedLine = LineSelection & {description:string, variant_label:string|null, unit_price_minor:Minor}`. Quote pricing does not fabricate a database line ID.
+- `QuotePricedLine = LineSelection & {description:string,variant_label:string|null,unit_price_minor:Minor}`; quote previews do not fabricate persisted line IDs.
+- `PricedLine = QuotePricedLine & {id:UUID}` for persisted lines used as invoice sources.
 - `PriceQuoteInput = {plan_id:UUID,lines:LineSelection[],at:string}`.
 - `PriceQuoteDTO = {currency:string,lines:QuotePricedLine[],subtotal_minor:Minor}`.
-- `PricedLine = QuotePricedLine & {id:UUID}` for persisted subscription lines used as invoice sources.
-- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,period_start:string,at:string}`. `period_start` is the invoice's UTC period-start instant and selects the tax effective date as `(period_start at time zone 'UTC')::date`. `at` is the server pricing instant for discount windows and usage preview.
+- `InvoicePricingInput = {currency:string,lines:PricedLine[],discount_id:UUID|null,period_start:string,at:string}`. Both instants are UTC; `period_start` selects the tax rule's effective calendar date as `(period_start at time zone 'UTC')::date`, while `at` evaluates discount windows and usage preview.
 - `InvoicePricingDTO = {lines:Array<PricedLine & {discount_minor:Minor,tax_rule_id:UUID|null,tax_rate_bps:number,tax_minor:Minor,amount_minor:Minor}>,subtotal_minor:Minor,discount_minor:Minor,tax_minor:Minor,total_minor:Minor}`.
 
 Server exports `getCatalog(actor,query): Promise<{catalog:CatalogDTO,next_cursor:string|null}>`,
-`priceQuote(actor,input:PriceQuoteInput): Promise<PriceQuoteDTO>`, and
-`priceInvoiceDraft(actor,invoiceId): Promise<InvoicePricingDTO>` plus
+`priceQuote(actor,input:PriceQuoteInput): Promise<PriceQuoteDTO>`,
+`priceInvoice(actor,input:InvoicePricingInput): Promise<InvoicePricingDTO>`, and
+`priceInvoiceDraft(actor,invoice_id): Promise<InvoicePricingDTO>` (loads the
+persisted draft's currency, `period_start`, frozen lines and attached discount
+through `readInvoiceLines(actor,invoiceId)`, then uses the server clock from
+`currentInstant()` for `at`), plus
 resource-specific `list/get/create/update` functions named after the resource
 (e.g. `createProduct`, `updatePlan`). D2 owns their validation/DTOs. Pricing is a
 preview, not a discount reservation; D4's confirmation transaction must recheck
