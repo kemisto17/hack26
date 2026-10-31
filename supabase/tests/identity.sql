@@ -50,6 +50,13 @@ update public.users set role='admin',is_active=true where id='11000000-0000-4000
 select public.identity_set_access('11000000-0000-4000-8000-000000000002','11000000-0000-4000-8000-000000000001',2,'customer',null);
 select pg_temp.fails($q$select public.identity_finish_invitation('11000000-0000-4000-8000-000000000001',(select id from private.staff_invitations where email='d1-revoked@example.invalid'),(select claim_token from private.staff_invitations where email='d1-revoked@example.invalid'))$q$, 'FORBIDDEN');
 select pg_temp.ok((select role='customer' from public.users where id='11000000-0000-4000-8000-000000000006'), 'failed completion leaves customer permissions');
+select public.identity_prepare_invitation('11000000-0000-4000-8000-000000000002','d1-null-claim@example.invalid','Claim');
+insert into auth.users(id,email,invited_at) values ('11000000-0000-4000-8000-000000000007','d1-null-claim@example.invalid',now());
+select public.identity_release_invitation('11000000-0000-4000-8000-000000000002',
+ (select id from private.staff_invitations where email='d1-null-claim@example.invalid'),
+ (select claim_token from private.staff_invitations where email='d1-null-claim@example.invalid'));
+select pg_temp.fails($q$select public.identity_finish_invitation('11000000-0000-4000-8000-000000000002',(select id from private.staff_invitations where email='d1-null-claim@example.invalid'),null)$q$, 'FORBIDDEN');
+select pg_temp.ok((select role='customer' from public.users where id='11000000-0000-4000-8000-000000000007'), 'released null claim cannot promote');
 select pg_temp.ok(not has_function_privilege('anon','public.identity_set_access(uuid,uuid,bigint,text,boolean)','execute'), 'anon cannot invoke access RPC');
 select pg_temp.ok(not has_function_privilege('authenticated','public.identity_set_access(uuid,uuid,bigint,text,boolean)','execute'), 'JWT clients cannot invoke access RPC');
 rollback;

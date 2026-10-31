@@ -213,6 +213,11 @@ role denials, inactive users, last-admin protection, retries, signup races and
 revoked inviters against real Supabase. The baseline suite still passes after
 the expansion. Both public and private database lint pass.
 
+`20261031062224_require_invitation_claim.sql` tightens completion to require a
+non-null claim and live lease. Released claims cannot be completed with null.
+The prior applied migration remains unchanged; the regression runs on the
+upgraded database with the same pending invitation shape and RPC signature.
+
 The committed SQL self-check exercises real PostgreSQL constraints and role-based
 access, including metadata escalation, two customers, internal/admin reads,
 disabled-account access, repeat billing/payment keys and financial retention.
