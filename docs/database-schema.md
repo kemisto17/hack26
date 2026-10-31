@@ -188,6 +188,36 @@ only expansion; it does not migrate a hosted project or perform contraction.
 
 ## Verification record
 
+### D1 identity expansion
+
+`20261031060015_identity_transactions.sql` adds server-only profile/access RPCs,
+a private invitation ledger and Auth capture trigger. Every identity mutation
+takes the same transaction advisory lock before user row locks and rechecks the
+active actor. Access changes compare the expected version; a trigger prevents
+removing the last active admin. The service-role-only RPCs are SECURITY INVOKER;
+the private Auth lookup/capture helpers are narrowly granted SECURITY DEFINER
+because Auth schema reads/trigger writes have no ordinary service-role grants.
+They use an empty search_path and never accept role metadata as authorization.
+
+Invitation preparation refuses existing Auth accounts, leases one normalized
+email for two minutes and persists the claim. New Auth users still bootstrap
+as customers. Completion requires a captured user with Auth's server-owned
+invited_at, the matching claim and a still-active admin. Failure leaves customer
+permissions; a retry reconciles a created user instead of resending. Accepted
+retries cannot reverse later access changes. No failed invite deletes an account.
+The ledger retains pending attempts/timestamps for diagnosis. Application rollback
+retains this additive schema and the existing baseline tables/signatures.
+
+The rollback-only `supabase/tests/identity.sql` exercises success, stale versions,
+role denials, inactive users, last-admin protection, retries, signup races and
+revoked inviters against real Supabase. The baseline suite still passes after
+the expansion. Both public and private database lint pass.
+
+`20261031062224_require_invitation_claim.sql` tightens completion to require a
+non-null claim and live lease. Released claims cannot be completed with null.
+The prior applied migration remains unchanged; the regression runs on the
+upgraded database with the same pending invitation shape and RPC signature.
+
 The committed SQL self-check exercises real PostgreSQL constraints and role-based
 access, including metadata escalation, two customers, internal/admin reads,
 disabled-account access, repeat billing/payment keys and financial retention.
