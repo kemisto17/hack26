@@ -29,6 +29,7 @@ export function bindSubscriptionServices(bindings: SubscriptionBindings) {
   async function current(actor: Actor) {
     const verified = await bindings.requireActor();
     if (verified.id !== actor.id) throw new SubscriptionError("FORBIDDEN", "Session actor mismatch.");
+    if (!["admin", "internal", "customer"].includes(verified.role)) throw new SubscriptionError("FORBIDDEN", "Invalid account role.");
     return verified; // use the current DB role, never the supplied role
   }
   async function admin(actor: Actor) {
@@ -37,8 +38,9 @@ export function bindSubscriptionServices(bindings: SubscriptionBindings) {
     return verified;
   }
   async function read(actor: Actor, id: string) {
-    const subscription = await bindings.readSubscription(actor, uuid(id));
-    if (!subscription) throw new SubscriptionError("NOT_FOUND", "Subscription not found.");
+    const requestedId = uuid(id);
+    const subscription = await bindings.readSubscription(actor, requestedId);
+    if (!subscription || subscription.id.toLowerCase() !== requestedId) throw new SubscriptionError("NOT_FOUND", "Subscription not found.");
     assertVisible(actor, subscription);
     return subscriptionDTO(subscription);
   }
@@ -111,7 +113,8 @@ export function bindSubscriptionServices(bindings: SubscriptionBindings) {
     async getOwnerActions(actor: Actor, id: string) {
       const verified = await current(actor);
       const subscription = await read(verified, id);
-      return { subscription, plan: await bindings.readPlanPolicy(verified, subscription.plan_id) };
+      const plan = await bindings.readPlanPolicy(verified, subscription.plan_id);
+      return { subscription, plan: { allow_pause: plan.allow_pause, allow_close: plan.allow_close, allow_renew: plan.allow_renew } };
     },
   };
 }

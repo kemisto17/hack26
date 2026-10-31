@@ -6,6 +6,15 @@ catalog implementation, migration, API handler or replacement persistence is
 provided. D1/D2/D4 review is still required; do not merge as a completed vertical
 slice. D3 owns only the paths assigned in docs/team-workstreams.md.
 
+Checkout assessment: the two baseline migrations contain the tables and access
+policies, but do not define `create_subscription`, `mutate_subscription`, or
+template transaction RPCs. There is no D1 identity/shared client or D2 catalog
+module in this checkout. No D3 API routes or pages are mounted. Consequently the
+components cannot yet call real protected services; do not bind them to fake data.
+The separate D1 and D2 branches reported by teammates must be integrated and
+verified before connecting this checkout; their existence elsewhere does not make
+these dependencies available here.
+
 ## D1 and D2 bindings
 
 `service.ts` imports `server-only` and exports `bindSubscriptionServices` and
@@ -101,8 +110,8 @@ resulting date range for partial updates, not just provided dates.
    periods under the same lock before clearing next_billing_at and setting paused;
    failure rolls back all invoices and state. No period starts while paused.
 8. resume requires paused, allow_pause, now < expiry. New period starts at resume
-   time, without paused catch-up or proration. Proposed D3 interpretation for D4
-   approval: restart billing_anchor_at and next_billing_at at resume time, preserving
+   time, without paused catch-up or proration. D4 agreed to restart billing_anchor_at
+   and next_billing_at at resume time, preserving
    that segment's day-of-month anchor thereafter. Never rewrite old invoice periods.
 9. close allows staff from all nonclosed states; owner early close requires
    allow_close (at/after expiry owner may close). Materialize earlier due periods
@@ -139,9 +148,14 @@ and discount locks. Period starts before expiry/cutoff may catch up even after
 expiry; final end is capped, period starting at/after cutoff never bills.
 Cancelled invoices retain period uniqueness. Auto-close waits for catch-up.
 Pause and close need D4's generation logic inside their existing transaction,
-not REST calls or separately committed RPCs. D1/D4 must agree the private SQL
-helper/cutoff interface before implementing those actions. No D4 table writes
-from D3 TypeScript. Resume anchor interpretation above needs D4 review.
+not REST calls or separately committed RPCs. D3 and D4 agreed to the proposed
+`private.generate_next_invoice_locked(p_subscription_id uuid, p_cutoff timestamptz)`:
+capture one cutoff under the subscription lock and drain while active before the
+state update; failure rolls back the transaction. D1 reports a billing migration
+on newer main; its implementation and database tests are not verified in this
+checkout. No D4 table writes from D3 TypeScript. Confirmation
+may lock invoice then discount only if its pricing path takes no later conflicting
+subscription lock; D1/D2/D4 must audit and test concurrent transactions.
 
 ## Required real database tests (D1 integrates, not currently passing)
 
