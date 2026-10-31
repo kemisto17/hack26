@@ -16,20 +16,6 @@ create sequence public.invoice_number_seq as bigint start 1;
 grant usage on schema private to service_role;
 grant usage, select on sequence public.invoice_number_seq to service_role;
 
-revoke all on function public.generate_next_invoice(uuid)
-  from public, anon, authenticated;
-revoke all on function public.confirm_invoice(uuid, uuid, bigint, jsonb)
-  from public, anon, authenticated;
-revoke all on function public.cancel_invoice(uuid, uuid, bigint)
-  from public, anon, authenticated;
-revoke all on function public.record_payment(uuid, uuid, bigint, uuid, jsonb, text)
-  from public, anon, authenticated;
-
-grant execute on function public.generate_next_invoice(uuid) to service_role;
-grant execute on function public.confirm_invoice(uuid, uuid, bigint, jsonb) to service_role;
-grant execute on function public.cancel_invoice(uuid, uuid, bigint) to service_role;
-grant execute on function public.record_payment(uuid, uuid, bigint, uuid, jsonb, text) to service_role;
-
 -- Staff/admin check against current database state, never Auth metadata.
 create or replace function private.assert_staff(p_actor_id uuid)
 returns void
@@ -84,7 +70,7 @@ create or replace function private.advance_billing_period(
   p_anchor timestamptz
 ) returns timestamptz
 language plpgsql
-immutable
+stable
 security invoker
 set search_path = ''
 as $$
@@ -288,7 +274,7 @@ declare
   v_cutoff timestamptz;
   v_invoice_id uuid;
   v_number text;
-  v_now timestamptz := clock_timestamp();
+  v_now timestamptz;
 begin
   if p_subscription_id is null then
     raise exception 'VALIDATION_ERROR: subscription_id is required' using errcode = 'P0001';
@@ -302,6 +288,7 @@ begin
   if not found then
     raise exception 'NOT_FOUND: subscription not found' using errcode = 'P0001';
   end if;
+  v_now := clock_timestamp();
   if v_sub.status <> 'active' then
     return null;  -- draft/quotation/confirmed/paused/closed create no periods
   end if;
@@ -399,6 +386,25 @@ begin
 end;
 $$;
 
+-- Private helpers are callable only by service_role after creation.
+revoke all on function private.assert_staff(uuid) from public, anon, authenticated;
+revoke all on function private.utc_instant(jsonb, text) from public, anon, authenticated;
+revoke all on function private.advance_billing_period(timestamptz, text, timestamptz) from public, anon, authenticated;
+revoke all on function private.iso_utc(timestamptz) from public, anon, authenticated;
+revoke all on function private.invoice_dto(uuid) from public, anon, authenticated;
+revoke all on function private.payment_dto(uuid) from public, anon, authenticated;
+revoke all on function private.price_invoice_draft(uuid, text) from public, anon, authenticated;
+revoke all on function private.generate_next_invoice_locked(uuid, timestamptz) from public, anon, authenticated;
+
+grant execute on function private.assert_staff(uuid) to service_role;
+grant execute on function private.utc_instant(jsonb, text) to service_role;
+grant execute on function private.advance_billing_period(timestamptz, text, timestamptz) to service_role;
+grant execute on function private.iso_utc(timestamptz) to service_role;
+grant execute on function private.invoice_dto(uuid) to service_role;
+grant execute on function private.payment_dto(uuid) to service_role;
+grant execute on function private.price_invoice_draft(uuid, text) to service_role;
+grant execute on function private.generate_next_invoice_locked(uuid, timestamptz) to service_role;
+
 create or replace function public.generate_next_invoice(p_subscription_id uuid)
 returns uuid
 language plpgsql
@@ -464,6 +470,10 @@ begin
   end if;
 
   -- Locks the subscription discount and performs the D2-reviewed reprice.
+  -- Lock order: in the D3 close/pause path the holding transaction already took
+  -- the subscription FOR UPDATE before invoice materialization, so the effective
+  -- subscription -> invoice -> discount ordering is preserved; confirmation takes
+  -- the invoice lock here before the pricing helper locks the discount.
   -- This can raise DISCOUNT_EXHAUSTED without changing invoice status.
   perform private.price_invoice_draft(p_invoice_id, 'reserve');
 
@@ -719,3 +729,18 @@ begin
   );
 end;
 $$;
+
+-- Service-role-only execution for the public billing RPCs (created above).
+revoke all on function public.generate_next_invoice(uuid)
+  from public, anon, authenticated;
+revoke all on function public.confirm_invoice(uuid, uuid, bigint, jsonb)
+  from public, anon, authenticated;
+revoke all on function public.cancel_invoice(uuid, uuid, bigint)
+  from public, anon, authenticated;
+revoke all on function public.record_payment(uuid, uuid, bigint, uuid, jsonb, text)
+  from public, anon, authenticated;
+
+grant execute on function public.generate_next_invoice(uuid) to service_role;
+grant execute on function public.confirm_invoice(uuid, uuid, bigint, jsonb) to service_role;
+grant execute on function public.cancel_invoice(uuid, uuid, bigint) to service_role;
+grant execute on function public.record_payment(uuid, uuid, bigint, uuid, jsonb, text) to service_role;
