@@ -78,7 +78,7 @@ test('invalid inputs fail before transactional bindings', async () => {
   await rejects(() => service.createSubscription(staff, { ...input, unit_price_minor: '1' }), 'VALIDATION_ERROR');
   await rejects(() => service.updateDraft(staff, other, { expected_version: '2', status: 'active' }), 'VALIDATION_ERROR');
   await rejects(() => service.activateSubscription(staff, other, { expected_version: '0' }), 'VALIDATION_ERROR');
-  for (const query of [{ limit: 101 }, { limit: 0 }, { status: 'bad' }, { cursor: '' }]) await rejects(() => service.listSubscriptions(staff, query), 'VALIDATION_ERROR');
+  for (const query of [{ limit: 101 }, { limit: 0 }, { status: 'bad' }, { status: '' }, { customer_id: '' }, { cursor: '' }]) await rejects(() => service.listSubscriptions(staff, query), 'VALIDATION_ERROR');
   assert.equal(calls.length, 0);
 });
 test('create retry forwards stable original input without resolving mutable template or pricing defaults', async () => {

@@ -1,7 +1,7 @@
 # D3 integration handoff
 
 Status: contracts, strict input validators, lifecycle preflight, request-scoped
-service bindings and unit tests. Not a working database workflow. No Auth,
+service bindings, reusable form/list/detail components and unit tests. Not a working database workflow. No Auth,
 catalog implementation, migration, API handler or replacement persistence is
 provided. D1/D2/D4 review is still required; do not merge as a completed vertical
 slice. D3 owns only the paths assigned in docs/team-workstreams.md.
@@ -169,6 +169,25 @@ from D3 TypeScript. Resume anchor interpretation above needs D4 review.
 Local unit runner: `node tests/subscriptions/run.mjs`. Binding spies exercise
 orchestration and projection only; they do not prove SQL locks, RLS, retries or
 rollback. Real Supabase/Auth, database tests and integrated UI remain release gates.
+
+## UI components ready for integration
+
+- TemplateForm: create/edit template, product/variant selections and retirement.
+- DraftSubscriptionForm: customer/plan, template or explicit lines, dates and
+  optional terms/discount. Retains creation UUID/input on an uncertain result;
+  changed inputs cannot silently reuse that UUID. No localStorage persistence.
+- DraftEditor: draft-only edits using expected_version; accepted terms render no
+  editing form. Parent must refresh/remount by id/version after a successful edit.
+- SubscriptionList and SubscriptionDetail: safe summary/accepted lines, workspace
+  or portal links, server-derived action hints, renewal to a new draft, accessible
+  native controls and live feedback. Monetary display uses BigInt and the currency
+  exponent; no floating-point conversion of money.
+
+These components are not mounted at URLs yet. Callback props must be wired to
+protected endpoints or verified server actions after dependency integration.
+Static rendering tests check labels, escaping, boundaries and action visibility;
+interactive browser/accessibility testing remains required with the mounted flow.
+Admin/internal/customer authorization stays in services/RPCs, never in the UI.
 
 ## HTTP and UI release boundary
 

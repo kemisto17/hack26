@@ -53,7 +53,7 @@ export function bindSubscriptionServices(bindings: SubscriptionBindings) {
   return {
     async listSubscriptions(actor: Actor, query: SubscriptionQuery = {}): Promise<Page<SubscriptionSummaryDTO>> {
       const verified = await current(actor);
-      const scoped = { ...pageQuery(query), ...(query.status ? { status: subscriptionStatus(query.status) } : {}), ...(verified.role === "customer" ? { customer_id: verified.id } : query.customer_id ? { customer_id: uuid(query.customer_id) } : {}) };
+      const scoped = { ...pageQuery(query), ...(query.status !== undefined ? { status: subscriptionStatus(query.status) } : {}), ...(verified.role === "customer" ? { customer_id: verified.id } : query.customer_id !== undefined ? { customer_id: uuid(query.customer_id) } : {}) };
       if (verified.role === "customer" && scoped.status === "draft") return { items: [], next_cursor: null };
       const page = await bindings.readSubscriptions(verified, scoped);
       return { items: page.items.filter(item => verified.role !== "customer" || (item.customer_id === verified.id && item.status !== "draft")).map(summaryDTO), next_cursor: page.next_cursor };
