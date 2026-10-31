@@ -2,7 +2,7 @@ import "server-only";
 import type { Actor, Creation, CreateSubscriptionInput, CreateTemplateInput, LineSelection, Mutation, Page, PageQuery, PlanPolicy, PricedLine, RenewSubscriptionInput, SubscriptionAction, SubscriptionDTO, SubscriptionQuery, SubscriptionSummaryDTO, TemplateDTO, UpdateDraftInput, UpdateTemplateInput } from "./contracts";
 import { SubscriptionError } from "./errors";
 import { assertStaff, assertVisible } from "./lifecycle";
-import { dateRange, instant, parseCreateSubscription, parseCreateTemplate, parseRenew, parseUpdateDraft, parseUpdateTemplate, uuid, version } from "./validation";
+import { dateRange, instant, object, parseCreateSubscription, parseCreateTemplate, parseRenew, parseUpdateDraft, parseUpdateTemplate, uuid, version } from "./validation";
 
 /** Request-scoped bindings to D1 Auth/DB and D2 pricing. No global actor/client,
  * environment reads, fallback Auth, REST writes, or replacement pricing here.
@@ -45,6 +45,7 @@ export function bindSubscriptionServices(bindings: SubscriptionBindings) {
   async function mutate(actor: Actor, id: string, action: SubscriptionAction, input: Mutation, payload: Record<string, unknown> = {}) {
     const verified = await current(actor);
     if (!["pause", "resume", "close", "renew"].includes(action)) assertStaff(verified);
+    object(input, ["expected_version"]);
     if (verified.role === "customer") await read(verified, id);
     // Do not version-check/reprice before the RPC: renewal retries must
     // replay before stale-version checks, even after catalog/template changes.
