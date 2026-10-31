@@ -2,6 +2,10 @@
 
 Use Node 22.12+ (Node 24 recommended), `npm ci`, then `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`. The test runner and aliases support every owned `tests/<module>` directory and colocated `*.test.ts` files. `npm run test:integration` runs explicit real-stack tests separately; it requires disposable development fixtures and never silently skips missing configuration.
 
+After D3 landed on main, `npm test` also runs its existing native Node suite via
+`npm run test:subscriptions`. D3 files are preserved unchanged; future D2/D4
+TypeScript suites run through Vitest without additional package edits.
+
 Set these values in an ignored root `.env.local` or deployment secrets. Never commit environment files, keys or Auth tokens:
 
 | Variable | Purpose |
